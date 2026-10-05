@@ -34,7 +34,7 @@ if archivo_pdf is not None:
             # 1. DETECCIÓN AUTOMÁTICA DEL BANCO
             texto_upper = texto_completo.upper()
             banco = "DESCONOCIDO"
-            if "SCOTIABANK" in texto_upper:
+            if "SCOTIA" in texto_upper or "20100043140" in texto_upper:
                 banco = "SCOTIABANK"
             elif "INTERBANK" in texto_upper and "NEGOCIOS" in texto_upper:
                 banco = "INTERBANK"
@@ -48,7 +48,7 @@ if archivo_pdf is not None:
             st.info(f"🏦 Banco detectado automáticamente: **{banco.replace('_', ' ')}**")
             
             data_final = []
-            saldo_previo = 0.0 # Usado para Scotiabank
+            saldo_previo = 0.0 
             
             # 2. PROCESAMIENTO POR BANCO
             for key in sorted_keys:
@@ -56,15 +56,14 @@ if archivo_pdf is not None:
                 combined = " ".join([i[1] for i in items])
                 pagina = key[0]
                 
-                fecha, desc, medio, lugar, sucursal, num_op, hora, cargo, abono, saldo = [""]*10
+                # Se añade ITF a las variables
+                fecha, desc, medio, lugar, sucursal, num_op, hora, cargo, abono, itf, saldo = [""]*11
                 es_transaccion = False
 
-                # LOGICA: SCOTIABANK (Matemática Inversa)
+                # LOGICA: SCOTIABANK
                 if banco == "SCOTIABANK":
-                    # Buscar el saldo inicial para empezar a calcular
                     if "Saldo Final al" in combined and re.search(r'\d{4}', combined):
-                        try:
-                            saldo_previo = float(combined.split()[-1].replace(',', ''))
+                        try: saldo_previo = float(combined.split()[-1].replace(',', ''))
                         except: pass
                     
                     elif re.match(r'^\d{2}/\d{2}\s', combined):
@@ -77,20 +76,16 @@ if archivo_pdf is not None:
                             saldo_float = float(saldo.replace(',', ''))
                             monto_float = float(monto_raw.replace(',', ''))
                             
-                            # Comprobación matemática para adivinar Cargo vs Abono
-                            if round(saldo_previo - monto_float, 2) == round(saldo_float, 2):
-                                cargo = monto_raw
-                            elif round(saldo_previo + monto_float, 2) == round(saldo_float, 2):
-                                abono = monto_raw
+                            if round(saldo_previo - monto_float, 2) == round(saldo_float, 2): cargo = monto_raw
+                            elif round(saldo_previo + monto_float, 2) == round(saldo_float, 2): abono = monto_raw
                             
                             saldo_previo = saldo_float
-                        except:
-                            cargo = monto_raw # Respaldo en caso de error de lectura
+                        except: cargo = monto_raw
                             
                         desc = " ".join(tokens[2:-2])
                         es_transaccion = True
 
-                # LOGICA: INTERBANK
+                # LOGICA: INTERBANK (Actualizada con Num. Operación)
                 elif banco == "INTERBANK":
                     if re.match(r'^\d{2}/\d{2}\s+\d{2}/\d{2}', combined):
                         tokens = combined.split()
@@ -99,7 +94,18 @@ if archivo_pdf is not None:
                         monto_raw = tokens[-2]
                         cargo = monto_raw.replace('-', '') if '-' in monto_raw else ""
                         abono = monto_raw if '-' not in monto_raw else ""
-                        desc = " ".join(tokens[2:-2])
+                        
+                        # Extraer código de operación (7 dígitos)
+                        num_op_match = re.search(r'\b\d{7}\b', combined)
+                        if num_op_match: num_op = num_op_match.group(0)
+                        
+                        middle_tokens = tokens[2:-2]
+                        if "WEB" in middle_tokens: medio = "WEB"
+                        elif "INTERNO" in middle_tokens: medio = "INTERNO"
+                        
+                        # Unir descripción limpiando el medio y num_op
+                        desc_tokens = [t for t in middle_tokens if t != num_op and t != medio]
+                        desc = " ".join(desc_tokens)
                         es_transaccion = True
 
                 # LOGICA: BCP AHORROS
@@ -117,15 +123,19 @@ if archivo_pdf is not None:
                         desc = " ".join(tokens[inicio_desc:-1])
                         es_transaccion = True
 
-                # LOGICA: BBVA
+                # LOGICA: BBVA (Actualizada con ITF y Medio/Lugar separados)
                 elif banco == "BBVA":
                     if len(items) > 3 and re.match(r'^\d{2}-\d{2}$', items[0][1]):
                         for x, t in items:
                             if x < 60: fecha = t
                             elif 100 < x < 250: desc += t + " "
+                            elif 250 < x < 310: lugar = t # OFICINA BBVA
+                            elif 310 < x < 330: medio = t # CANAL BBVA
+                            elif 330 < x < 380: num_op = t # NUM. OPER. BBVA
                             elif 380 < x < 430:
                                 if '-' in t: cargo = t.replace('-', '')
                                 else: abono = t
+                            elif 430 < x < 490: itf = t # COLUMNA ITF BBVA
                             elif 490 < x < 550: saldo = t
                         desc = desc.strip()
                         es_transaccion = True
@@ -161,10 +171,11 @@ if archivo_pdf is not None:
                         es_transaccion = True
 
                 if es_transaccion:
-                    data_final.append([pagina, fecha, desc, medio, lugar, sucursal, num_op, hora.strip(), cargo, abono, saldo])
+                    data_final.append([pagina, fecha, desc, medio, lugar, sucursal, num_op, hora.strip(), cargo, abono, itf, saldo])
                     
             # 3. CREAR EXCEL EN MEMORIA
-            columnas = ["PAGINA", "FECHA", "DESCRIPCION", "MEDIO", "LUGAR", "SUCURSAL", "NUMERO DE OPERACION", "HORA U ORIGEN", "CARGO", "ABONO", "SALDO"]
+            # Columna ITF añadida aquí
+            columnas = ["PAGINA", "FECHA", "DESCRIPCION", "MEDIO", "LUGAR", "SUCURSAL", "NUMERO DE OPERACION", "HORA U ORIGEN", "CARGO", "ABONO", "ITF", "SALDO"]
             df_final = pd.DataFrame(data_final, columns=columnas)
             
             if len(df_final) > 0:
@@ -182,7 +193,7 @@ if archivo_pdf is not None:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
             else:
-                st.warning("⚠️ El documento es válido pero no se detectaron transacciones legibles. Verifica si el PDF es texto nativo o una foto.")
+                st.warning("⚠️ El documento es válido pero no se detectaron transacciones legibles.")
                 
         except Exception as e:
-            st.error(f"❌ Ocurrió un error procesando el archivo. Asegúrate de que sea un PDF bancario original. Detalle: {e}")
+            st.error(f"❌ Ocurrió un error procesando el archivo. Detalle: {e}")
