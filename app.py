@@ -56,11 +56,10 @@ if archivo_pdf is not None:
                 combined = " ".join([i[1] for i in items])
                 pagina = key[0]
                 
-                # Se añade ITF a las variables
                 fecha, desc, medio, lugar, sucursal, num_op, hora, cargo, abono, itf, saldo = [""]*11
                 es_transaccion = False
 
-                # LOGICA: SCOTIABANK
+                # LOGICA: SCOTIABANK 
                 if banco == "SCOTIABANK":
                     if "Saldo Final al" in combined and re.search(r'\d{4}', combined):
                         try: saldo_previo = float(combined.split()[-1].replace(',', ''))
@@ -68,7 +67,7 @@ if archivo_pdf is not None:
                     
                     elif re.match(r'^\d{2}/\d{2}\s', combined):
                         tokens = combined.split()
-                        fecha = tokens[0]
+                        fecha = tokens[0] # Fecha Operación
                         saldo = tokens[-1]
                         monto_raw = tokens[-2]
                         
@@ -81,11 +80,14 @@ if archivo_pdf is not None:
                             
                             saldo_previo = saldo_float
                         except: cargo = monto_raw
-                            
-                        desc = " ".join(tokens[2:-2])
+                        
+                        num_op = tokens[-3] # REFERENCIA
+                        medio = tokens[2] # ORIG
+                        desc = " ".join(tokens[3:-3]) # CONCEPTO
+                        
                         es_transaccion = True
 
-                # LOGICA: INTERBANK (Actualizada con Num. Operación)
+                # LOGICA: INTERBANK
                 elif banco == "INTERBANK":
                     if re.match(r'^\d{2}/\d{2}\s+\d{2}/\d{2}', combined):
                         tokens = combined.split()
@@ -95,7 +97,6 @@ if archivo_pdf is not None:
                         cargo = monto_raw.replace('-', '') if '-' in monto_raw else ""
                         abono = monto_raw if '-' not in monto_raw else ""
                         
-                        # Extraer código de operación (7 dígitos)
                         num_op_match = re.search(r'\b\d{7}\b', combined)
                         if num_op_match: num_op = num_op_match.group(0)
                         
@@ -103,7 +104,6 @@ if archivo_pdf is not None:
                         if "WEB" in middle_tokens: medio = "WEB"
                         elif "INTERNO" in middle_tokens: medio = "INTERNO"
                         
-                        # Unir descripción limpiando el medio y num_op
                         desc_tokens = [t for t in middle_tokens if t != num_op and t != medio]
                         desc = " ".join(desc_tokens)
                         es_transaccion = True
@@ -123,19 +123,19 @@ if archivo_pdf is not None:
                         desc = " ".join(tokens[inicio_desc:-1])
                         es_transaccion = True
 
-                # LOGICA: BBVA (Actualizada con ITF y Medio/Lugar separados)
+                # LOGICA: BBVA (Ajustada según revisión)
                 elif banco == "BBVA":
                     if len(items) > 3 and re.match(r'^\d{2}-\d{2}$', items[0][1]):
                         for x, t in items:
                             if x < 60: fecha = t
                             elif 100 < x < 250: desc += t + " "
-                            elif 250 < x < 310: lugar = t # OFICINA BBVA
-                            elif 310 < x < 330: medio = t # CANAL BBVA
-                            elif 330 < x < 380: num_op = t # NUM. OPER. BBVA
+                            elif 250 < x < 310: sucursal = t # OFICINA BBVA
+                            elif 310 < x < 330: medio = t # CAN BBVA
+                            elif 330 < x < 380: num_op = t # N° OPER BBVA
                             elif 380 < x < 430:
                                 if '-' in t: cargo = t.replace('-', '')
                                 else: abono = t
-                            elif 430 < x < 490: itf = t # COLUMNA ITF BBVA
+                            elif 430 < x < 490: itf = t # ITF BBVA
                             elif 490 < x < 550: saldo = t
                         desc = desc.strip()
                         es_transaccion = True
@@ -174,7 +174,6 @@ if archivo_pdf is not None:
                     data_final.append([pagina, fecha, desc, medio, lugar, sucursal, num_op, hora.strip(), cargo, abono, itf, saldo])
                     
             # 3. CREAR EXCEL EN MEMORIA
-            # Columna ITF añadida aquí
             columnas = ["PAGINA", "FECHA", "DESCRIPCION", "MEDIO", "LUGAR", "SUCURSAL", "NUMERO DE OPERACION", "HORA U ORIGEN", "CARGO", "ABONO", "ITF", "SALDO"]
             df_final = pd.DataFrame(data_final, columns=columnas)
             
