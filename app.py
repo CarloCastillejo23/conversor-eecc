@@ -3,6 +3,7 @@ import pypdf
 import pandas as pd
 import io
 import re
+from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
 
 st.set_page_config(page_title="Conversor Bancario Universal", page_icon="🏦", layout="wide")
 st.title("🏦 Convertidor Universal de Estados de Cuenta")
@@ -13,6 +14,7 @@ archivo_pdf = st.file_uploader("Sube tu Estado de Cuenta (PDF)", type=["pdf"])
 if archivo_pdf is not None:
     with st.spinner("Procesando documento con Inteligencia de Datos..."):
         try:
+            # LEYENDO EL PDF
             reader = pypdf.PdfReader(archivo_pdf)
             all_text_with_coords = []
             texto_completo = ""
@@ -48,7 +50,7 @@ if archivo_pdf is not None:
             st.info(f"🏦 Banco detectado automáticamente: **{banco.replace('_', ' ')}**")
             
             data_final = []
-            saldo_previo = 0.0 
+            saldo_previo_scotia = 0.0 
             
             # 2. PROCESAMIENTO POR BANCO
             for key in sorted_keys:
@@ -62,12 +64,12 @@ if archivo_pdf is not None:
                 # LOGICA: SCOTIABANK 
                 if banco == "SCOTIABANK":
                     if "Saldo Final al" in combined and re.search(r'\d{4}', combined):
-                        try: saldo_previo = float(combined.split()[-1].replace(',', ''))
+                        try: saldo_previo_scotia = float(combined.split()[-1].replace(',', ''))
                         except: pass
                     
                     elif re.match(r'^\d{2}/\d{2}\s', combined):
                         tokens = combined.split()
-                        fecha = tokens[0] # Fecha Operación
+                        fecha = tokens[0] 
                         saldo = tokens[-1]
                         monto_raw = tokens[-2]
                         
@@ -75,16 +77,15 @@ if archivo_pdf is not None:
                             saldo_float = float(saldo.replace(',', ''))
                             monto_float = float(monto_raw.replace(',', ''))
                             
-                            if round(saldo_previo - monto_float, 2) == round(saldo_float, 2): cargo = monto_raw
-                            elif round(saldo_previo + monto_float, 2) == round(saldo_float, 2): abono = monto_raw
+                            if round(saldo_previo_scotia - monto_float, 2) == round(saldo_float, 2): cargo = monto_raw
+                            elif round(saldo_previo_scotia + monto_float, 2) == round(saldo_float, 2): abono = monto_raw
                             
-                            saldo_previo = saldo_float
+                            saldo_previo_scotia = saldo_float
                         except: cargo = monto_raw
                         
-                        num_op = tokens[-3] # REFERENCIA
-                        medio = tokens[2] # ORIG
-                        desc = " ".join(tokens[3:-3]) # CONCEPTO
-                        
+                        num_op = tokens[-3] 
+                        medio = tokens[2] 
+                        desc = " ".join(tokens[3:-3]) 
                         es_transaccion = True
 
                 # LOGICA: INTERBANK
@@ -123,19 +124,19 @@ if archivo_pdf is not None:
                         desc = " ".join(tokens[inicio_desc:-1])
                         es_transaccion = True
 
-                # LOGICA: BBVA (Ajustada según revisión)
+                # LOGICA: BBVA
                 elif banco == "BBVA":
                     if len(items) > 3 and re.match(r'^\d{2}-\d{2}$', items[0][1]):
                         for x, t in items:
                             if x < 60: fecha = t
                             elif 100 < x < 250: desc += t + " "
-                            elif 250 < x < 310: sucursal = t # OFICINA BBVA
-                            elif 310 < x < 330: medio = t # CAN BBVA
-                            elif 330 < x < 380: num_op = t # N° OPER BBVA
+                            elif 250 < x < 310: sucursal = t 
+                            elif 310 < x < 330: medio = t 
+                            elif 330 < x < 380: num_op = t 
                             elif 380 < x < 430:
                                 if '-' in t: cargo = t.replace('-', '')
                                 else: abono = t
-                            elif 430 < x < 490: itf = t # ITF BBVA
+                            elif 430 < x < 490: itf = t 
                             elif 490 < x < 550: saldo = t
                         desc = desc.strip()
                         es_transaccion = True
@@ -173,20 +174,78 @@ if archivo_pdf is not None:
                 if es_transaccion:
                     data_final.append([pagina, fecha, desc, medio, lugar, sucursal, num_op, hora.strip(), cargo, abono, itf, saldo])
                     
-            # 3. CREAR EXCEL EN MEMORIA
+            # 3. CREAR EXCEL EN MEMORIA CON DISEÑO Y CÁLCULOS
             columnas = ["PAGINA", "FECHA", "DESCRIPCION", "MEDIO", "LUGAR", "SUCURSAL", "NUMERO DE OPERACION", "HORA U ORIGEN", "CARGO", "ABONO", "ITF", "SALDO"]
             df_final = pd.DataFrame(data_final, columns=columnas)
             
             if len(df_final) > 0:
+                # --- A. CONVERSIÓN A NÚMEROS Y CÁLCULOS ---
+                def limpiar_numero(val):
+                    if not val or str(val).strip() == "": return 0.0
+                    val_str = str(val).replace(',', '').strip()
+                    try: return float(val_str)
+                    except: return 0.0
+                
+                df_final['CARGO'] = df_final['CARGO'].apply(limpiar_numero)
+                df_final['ABONO'] = df_final['ABONO'].apply(limpiar_numero)
+                df_final['SALDO'] = df_final['SALDO'].apply(limpiar_numero)
+                
+                total_cargos = df_final['CARGO'].sum()
+                total_abonos = df_final['ABONO'].sum()
+                saldo_final = df_final['SALDO'].iloc[-1]
+                saldo_inicial = df_final['SALDO'].iloc[0] + df_final['CARGO'].iloc[0] - df_final['ABONO'].iloc[0]
+
                 st.success(f"✅ ¡Éxito! Se extrajeron {len(df_final)} transacciones.")
                 st.dataframe(df_final.head())
                 
+                # --- B. DISEÑO DEL EXCEL (OPENPYXL) ---
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                    df_final.to_excel(writer, index=False)
+                    df_final.to_excel(writer, index=False, startrow=8, sheet_name="Estado de Cuenta")
+                    worksheet = writer.sheets["Estado de Cuenta"]
+                    
+                    color_azul_oscuro = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
+                    fuente_blanca = Font(color="FFFFFF", bold=True)
+                    fuente_logo = Font(color="FFFFFF", bold=True, size=40, italic=True)
+                    borde_blanco = Border(
+                        left=Side(style='medium', color="FFFFFF"), right=Side(style='medium', color="FFFFFF"),
+                        top=Side(style='medium', color="FFFFFF"), bottom=Side(style='medium', color="FFFFFF")
+                    )
+                    centro = Alignment(horizontal="center", vertical="center")
+                    
+                    ancho_tabla = len(df_final.columns)
+                    for row in range(1, 8):
+                        for col in range(1, ancho_tabla + 1):
+                            worksheet.cell(row=row, column=col).fill = color_azul_oscuro
+                            
+                    celda_banco = worksheet.cell(row=4, column=2, value=f"  {banco.replace('_', ' ')}  ")
+                    celda_banco.font = fuente_logo
+                    
+                    titulos_resumen = ["SALDO DISPONIBLE", "TOTAL CARGOS", "TOTAL ABONOS", "SALDO FINAL"]
+                    valores_resumen = [saldo_inicial, total_cargos, total_abonos, saldo_final]
+                    
+                    col_inicio_resumen = ancho_tabla - 3
+                    if col_inicio_resumen < 6: col_inicio_resumen = 6
+                    
+                    for i in range(4):
+                        c_tit = worksheet.cell(row=3, column=col_inicio_resumen + i, value=titulos_resumen[i])
+                        c_tit.font, c_tit.fill, c_tit.border, c_tit.alignment = fuente_blanca, color_azul_oscuro, borde_blanco, centro
+                        
+                        c_val = worksheet.cell(row=4, column=col_inicio_resumen + i, value=valores_resumen[i])
+                        c_val.font, c_val.fill, c_val.border, c_val.alignment = fuente_blanca, color_azul_oscuro, borde_blanco, centro
+                        c_val.number_format = '#,##0.00'
+                        
+                    for col in worksheet.columns:
+                        max_length = 0
+                        column = col[0].column_letter
+                        for cell in col:
+                            try:
+                                if len(str(cell.value)) > max_length: max_length = len(str(cell.value))
+                            except: pass
+                        worksheet.column_dimensions[column].width = min(max_length + 2, 50)
                 
                 st.download_button(
-                    label="📥 Descargar Excel Uniformizado",
+                    label="📥 Descargar Excel con Resumen Automático",
                     data=buffer.getvalue(),
                     file_name=f"Estado_Cuenta_{banco}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
