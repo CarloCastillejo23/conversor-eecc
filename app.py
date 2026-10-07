@@ -3,6 +3,7 @@ import pypdf
 import pandas as pd
 import io
 import re
+import datetime
 from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
 
 st.set_page_config(page_title="Conversor Bancario Universal", page_icon="🏦", layout="wide")
@@ -28,11 +29,13 @@ if archivo_pdf is not None:
             lines_by_page_and_y = {}
             for p, x, y, text in all_text_with_coords:
                 key = (p, y)
-                lines_by_page_and_y.setdefault(key, []).append((x, text))
+                if key not in lines_by_page_and_y:
+                    lines_by_page_and_y[key] = []
+                lines_by_page_and_y[key].append((x, text))
                 
             sorted_keys = sorted(lines_by_page_and_y.keys(), key=lambda k: (k[0], -k[1]))
             
-            # 1. DETECCIÓN AUTOMÁTICA DEL BANCO (Orden corregido para evitar conflictos)
+            # 1. DETECCIÓN AUTOMÁTICA DEL BANCO Y AÑO
             texto_upper = texto_completo.upper()
             banco = "DESCONOCIDO"
             if "ESTADO DE CUENTA CORRIENTE" in texto_upper and "BCP" in texto_upper:
@@ -48,6 +51,11 @@ if archivo_pdf is not None:
                 
             st.info(f"🏦 Banco detectado automáticamente: **{banco.replace('_', ' ')}**")
             
+            # Buscar el año del documento para formatear la fecha
+            current_year = str(datetime.datetime.now().year)
+            match_year = re.search(r'\b(202\d)\b', texto_completo)
+            doc_year = match_year.group(1) if match_year else current_year
+            
             # 2. EXTRACCIÓN DEL SALDO INICIAL EXACTO DECLARADO
             saldo_inicial_declarado = None
             
@@ -56,11 +64,13 @@ if archivo_pdf is not None:
                 combined = " ".join([i[1] for i in items])
                 
                 if banco == "SCOTIABANK" and "Saldo Final al" in combined and re.search(r'\d{4}', combined):
-                    try: saldo_inicial_declarado = float(combined.split()[-1].replace(',', ''))
+                    try: 
+                        saldo_inicial_declarado = float(combined.split()[-1].replace(',', ''))
                     except: pass
                     break
                 elif banco in ["BBVA", "BCP_AHORROS"] and "SALDO ANTERIOR" in combined:
-                    try: saldo_inicial_declarado = float(combined.split()[-1].replace(',', ''))
+                    try: 
+                        saldo_inicial_declarado = float(combined.split()[-1].replace(',', ''))
                     except: pass
                     break
                 elif banco == "INTERBANK":
@@ -78,14 +88,15 @@ if archivo_pdf is not None:
                         break
                 elif banco == "BCP_CORRIENTE":
                     if len(items) > 5 and not re.search(r'[a-zA-Z]', combined):
-                        try: saldo_inicial_declarado = float(items[0][1].replace(',', ''))
+                        try: 
+                            saldo_inicial_declarado = float(items[0][1].replace(',', ''))
                         except: pass
                         break
 
             saldo_previo = saldo_inicial_declarado if saldo_inicial_declarado is not None else 0.0
             data_final = []
             
-            # 3. PROCESAMIENTO DE TRANSACCIONES POR BANCO
+            # 3. PROCESAMIENTO DE TRANSACCIONES
             for key in sorted_keys:
                 items = sorted(lines_by_page_and_y[key], key=lambda i: i[0]) 
                 combined = " ".join([i[1] for i in items])
@@ -94,30 +105,24 @@ if archivo_pdf is not None:
                 fecha, desc, medio, lugar, sucursal, num_op, hora, cargo, abono, itf, saldo = [""]*11
                 es_transaccion = False
 
-                # LOGICA: SCOTIABANK 
                 if banco == "SCOTIABANK":
                     if re.match(r'^\d{2}/\d{2}\s', combined):
                         tokens = combined.split()
                         fecha = tokens[0] 
                         saldo = tokens[-1]
                         monto_raw = tokens[-2]
-                        
                         try:
                             saldo_float = float(saldo.replace(',', ''))
                             monto_float = float(monto_raw.replace(',', ''))
-                            
                             if round(saldo_previo - monto_float, 2) == round(saldo_float, 2): cargo = monto_raw
                             elif round(saldo_previo + monto_float, 2) == round(saldo_float, 2): abono = monto_raw
-                            
                             saldo_previo = saldo_float
                         except: cargo = monto_raw
-                        
                         num_op = tokens[-3] 
                         medio = tokens[2] 
                         desc = " ".join(tokens[3:-3]) 
                         es_transaccion = True
 
-                # LOGICA: INTERBANK
                 elif banco == "INTERBANK":
                     if re.match(r'^\d{2}/\d{2}\s+\d{2}/\d{2}', combined):
                         tokens = combined.split()
@@ -126,19 +131,15 @@ if archivo_pdf is not None:
                         monto_raw = tokens[-2]
                         cargo = monto_raw.replace('-', '') if '-' in monto_raw else ""
                         abono = monto_raw if '-' not in monto_raw else ""
-                        
                         num_op_match = re.search(r'\b\d{7}\b', combined)
                         if num_op_match: num_op = num_op_match.group(0)
-                        
                         middle_tokens = tokens[2:-2]
                         if "WEB" in middle_tokens: medio = "WEB"
                         elif "INTERNO" in middle_tokens: medio = "INTERNO"
-                        
                         desc_tokens = [t for t in middle_tokens if t != num_op and t != medio]
                         desc = " ".join(desc_tokens)
                         es_transaccion = True
 
-                # LOGICA: BCP AHORROS
                 elif banco == "BCP_AHORROS":
                     if re.match(r'^\d{2}[A-Z]{3}\s', combined):
                         raw_str = items[0][1] if len(items)==1 else combined
@@ -148,12 +149,10 @@ if archivo_pdf is not None:
                         idx = raw_str.rfind(monto)
                         if idx > 60: abono = monto
                         else: cargo = monto
-                        
                         inicio_desc = 2 if re.match(r'^\d{2}[A-Z]{3}$', tokens[1]) else 1
                         desc = " ".join(tokens[inicio_desc:-1])
                         es_transaccion = True
 
-                # LOGICA: BBVA
                 elif banco == "BBVA":
                     if len(items) > 3 and re.match(r'^\d{2}-\d{2}$', items[0][1]):
                         for x, t in items:
@@ -170,7 +169,6 @@ if archivo_pdf is not None:
                         desc = desc.strip()
                         es_transaccion = True
 
-                # LOGICA: BCP CORRIENTE
                 elif banco == "BCP_CORRIENTE":
                     if re.match(r'^\d{2}-\d{2}\s', combined):
                         tokens = combined.split()
@@ -179,11 +177,9 @@ if archivo_pdf is not None:
                         monto_raw = tokens[-2]
                         cargo = monto_raw.replace('-', '') if '-' in monto_raw else ""
                         abono = monto_raw if '-' not in monto_raw else ""
-                        
                         middle = tokens[1:-2] 
                         medios_conocidos = ["BPI", "POS", "VEN", "INT", "CAJ", "TLC", "BPT"]
                         medio_index = next((i for i, t in enumerate(middle) if t in medios_conocidos), -1)
-                            
                         if medio_index != -1:
                             desc = " ".join(middle[:medio_index])
                             rest = middle[medio_index+1:]
@@ -191,7 +187,6 @@ if archivo_pdf is not None:
                         else:
                             desc = " ".join(middle[:3]) 
                             rest = middle[3:]
-                            
                         for t in rest:
                             if re.match(r'^\d{3}-\d{3}$', t): lugar = t 
                             elif re.match(r'^\d{2}:\d{2}$', t): hora = t 
@@ -203,30 +198,68 @@ if archivo_pdf is not None:
                 if es_transaccion:
                     data_final.append([pagina, fecha, desc, medio, lugar, sucursal, num_op, hora.strip(), cargo, abono, itf, saldo])
                     
-            # 4. CREAR EXCEL EN MEMORIA CON DISEÑO Y CÁLCULOS
+            # 4. FORMATEO DE DATOS, FECHAS Y CEROS
             columnas = ["PAGINA", "FECHA", "DESCRIPCION", "MEDIO", "LUGAR", "SUCURSAL", "NUMERO DE OPERACION", "HORA U ORIGEN", "CARGO", "ABONO", "ITF", "SALDO"]
+            
+            # --- Convertidor de Fechas ---
+            def formatear_fecha(fecha_str):
+                fecha_str = str(fecha_str).strip().upper()
+                if not fecha_str: return ""
+                if re.search(r'\d{4}', fecha_str): return fecha_str
+                
+                meses = {'ENE':'01', 'FEB':'02', 'MAR':'03', 'ABR':'04', 'MAY':'05', 'JUN':'06', 
+                         'JUL':'07', 'AGO':'08', 'SET':'09', 'SEP':'09', 'OCT':'10', 'NOV':'11', 'DIC':'12'}
+                
+                match1 = re.match(r'^(\d{2})[/-](\d{2})$', fecha_str)
+                if match1: return f"{match1.group(1)}/{match1.group(2)}/{doc_year}"
+                match2 = re.match(r'^(\d{2})-?([A-Z]{3})$', fecha_str)
+                if match2: return f"{match2.group(1)}/{meses.get(match2.group(2), '01')}/{doc_year}"
+                return fecha_str
+
+            # --- Limpiador de Ceros ---
+            def limpiar_numero_espacios(val):
+                if not val or str(val).strip() == "": return None
+                val_str = str(val).replace(',', '').strip()
+                try: 
+                    num = float(val_str)
+                    return num if num != 0 else None # Retorna None (En blanco) si es 0
+                except: 
+                    return None
+            
+            def parse_float_seguro(val):
+                if not val or str(val).strip() == "": return 0.0
+                try: return float(str(val).replace(',', '').strip())
+                except: return 0.0
+
             df_final = pd.DataFrame(data_final, columns=columnas)
             
             if len(df_final) > 0:
-                def limpiar_numero(val):
-                    if not val or str(val).strip() == "": return 0.0
-                    val_str = str(val).replace(',', '').strip()
-                    try: return float(val_str)
-                    except: return 0.0
+                df_final['FECHA'] = df_final['FECHA'].apply(formatear_fecha)
                 
-                df_final['CARGO'] = df_final['CARGO'].apply(limpiar_numero)
-                df_final['ABONO'] = df_final['ABONO'].apply(limpiar_numero)
-                df_final['SALDO'] = df_final['SALDO'].apply(limpiar_numero)
-                
-                total_cargos = df_final['CARGO'].sum()
-                total_abonos = df_final['ABONO'].sum()
-                saldo_final = df_final['SALDO'].iloc[-1]
-                
-                saldo_inicial = saldo_inicial_declarado if saldo_inicial_declarado is not None else (df_final['SALDO'].iloc[0] + df_final['CARGO'].iloc[0] - df_final['ABONO'].iloc[0])
+                # Respaldo matemático por si no se detectó el Saldo Inicial en el texto
+                if saldo_inicial_declarado is None:
+                    s_primero = parse_float_seguro(data_final[0][11])
+                    c_primero = parse_float_seguro(data_final[0][8])
+                    a_primero = parse_float_seguro(data_final[0][9])
+                    i_primero = parse_float_seguro(data_final[0][10])
+                    saldo_inicial = s_primero + c_primero + i_primero - a_primero
+                else:
+                    saldo_inicial = saldo_inicial_declarado
 
-                st.success(f"✅ ¡Éxito! Se extrajeron {len(df_final)} transacciones.")
+                # Limpiando los ceros para dejar las celdas en blanco
+                df_final['CARGO'] = df_final['CARGO'].apply(limpiar_numero_espacios)
+                df_final['ABONO'] = df_final['ABONO'].apply(limpiar_numero_espacios)
+                df_final['ITF'] = df_final['ITF'].apply(limpiar_numero_espacios)
+                df_final['SALDO'] = None # Lo dejamos vacío para que Python escriba la fórmula nativa de Excel
+                
+                # --- INYECTAR FILA DE "SALDO ANTERIOR" ---
+                fila_saldo_anterior = pd.DataFrame([["", "", "SALDO ANTERIOR", "", "", "", "", "", None, None, None, None]], columns=columnas)
+                df_final = pd.concat([fila_saldo_anterior, df_final], ignore_index=True)
+
+                st.success(f"✅ ¡Éxito! Se extrajeron {len(df_final) - 1} transacciones con fórmulas integradas.")
                 st.dataframe(df_final.head())
                 
+                # 5. CREACIÓN Y DISEÑO DEL EXCEL
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                     df_final.to_excel(writer, index=False, startrow=8, sheet_name="Estado de Cuenta")
@@ -242,6 +275,8 @@ if archivo_pdf is not None:
                     centro = Alignment(horizontal="center", vertical="center")
                     
                     ancho_tabla = len(df_final.columns)
+                    
+                    # Pintar cabecera azul
                     for row in range(1, 8):
                         for col in range(1, ancho_tabla + 1):
                             worksheet.cell(row=row, column=col).fill = color_azul_oscuro
@@ -249,31 +284,55 @@ if archivo_pdf is not None:
                     celda_banco = worksheet.cell(row=4, column=2, value=f"  {banco.replace('_', ' ')}  ")
                     celda_banco.font = fuente_logo
                     
-                    titulos_resumen = ["SALDO DISPONIBLE", "TOTAL CARGOS", "TOTAL ABONOS", "SALDO FINAL"]
-                    valores_resumen = [saldo_inicial, total_cargos, total_abonos, saldo_final]
-                    
                     col_inicio_resumen = ancho_tabla - 3
-                    if col_inicio_resumen < 6: col_inicio_resumen = 6
+                    if col_inicio_resumen < 6: 
+                        col_inicio_resumen = 6
                     
+                    titulos_resumen = ["SALDO DISPONIBLE", "TOTAL CARGOS", "TOTAL ABONOS", "SALDO FINAL"]
+                    
+                    # Configurar Cuadro Resumen
                     for i in range(4):
                         c_tit = worksheet.cell(row=3, column=col_inicio_resumen + i, value=titulos_resumen[i])
                         c_tit.font, c_tit.fill, c_tit.border, c_tit.alignment = fuente_blanca, color_azul_oscuro, borde_blanco, centro
                         
-                        c_val = worksheet.cell(row=4, column=col_inicio_resumen + i, value=valores_resumen[i])
+                        c_val = worksheet.cell(row=4, column=col_inicio_resumen + i)
                         c_val.font, c_val.fill, c_val.border, c_val.alignment = fuente_blanca, color_azul_oscuro, borde_blanco, centro
                         c_val.number_format = '#,##0.00'
+                    
+                    # Inyectar Valores y Fórmulas al Cuadro de Resumen
+                    last_row = 9 + len(df_final)
+                    
+                    worksheet.cell(row=4, column=9).value = saldo_inicial # I4 (Saldo Inicial)
+                    worksheet.cell(row=4, column=10).value = f"=SUM(I11:I{last_row}) + SUM(K11:K{last_row})" # J4 (Total Cargos + ITF)
+                    worksheet.cell(row=4, column=11).value = f"=SUM(J11:J{last_row})" # K4 (Total Abonos)
+                    worksheet.cell(row=4, column=12).value = "=I4+K4-J4" # L4 (Saldo Final = Inicial + Abonos - Cargos)
+                    
+                    # Inyectar Fórmulas en la columna L (SALDO)
+                    for r in range(10, last_row + 1):
+                        if r == 10:
+                            worksheet.cell(row=r, column=12).value = "=I4" # Saldo Anterior jala del resumen
+                        else:
+                            # Formula Sucesiva: Saldo Anterior - Cargo + Abono - ITF
+                            worksheet.cell(row=r, column=12).value = f"=L{r-1}-I{r}+J{r}-K{r}"
+                    
+                    # Dar formato de moneda a todo
+                    for r in range(10, last_row + 1):
+                        for c in [9, 10, 11, 12]:
+                            worksheet.cell(row=r, column=c).number_format = '#,##0.00'
                         
+                    # Auto-Ajustar Columnas
                     for col in worksheet.columns:
                         max_length = 0
                         column = col[0].column_letter
                         for cell in col:
                             try:
-                                if len(str(cell.value)) > max_length: max_length = len(str(cell.value))
+                                if len(str(cell.value)) > max_length: 
+                                    max_length = len(str(cell.value))
                             except: pass
                         worksheet.column_dimensions[column].width = min(max_length + 2, 50)
                 
                 st.download_button(
-                    label="📥 Descargar Excel con Resumen Automático",
+                    label="📥 Descargar Excel Uniformizado (Formato y Fórmulas)",
                     data=buffer.getvalue(),
                     file_name=f"Estado_Cuenta_{banco}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
