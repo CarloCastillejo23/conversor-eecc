@@ -6,16 +6,97 @@ import re
 import datetime
 from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
 
-st.set_page_config(page_title="Conversor Bancario Universal", page_icon="🏦", layout="wide")
-st.title("🏦 Convertidor Universal de Estados de Cuenta")
-st.write("Sube el PDF de tu estado de cuenta (Soporta BCP, BBVA, Interbank y Scotiabank) y descárgalo en Excel al instante.")
+st.set_page_config(page_title="Respaldo Tributario - Conversor Bancario", page_icon="📈", layout="wide")
 
-archivo_pdf = st.file_uploader("Sube tu Estado de Cuenta (PDF)", type=["pdf"])
+# --- INYECCIÓN DE DISEÑO CORPORATIVO (CSS) ---
+st.markdown("""
+<style>
+/* Aplicar tipografía oficial de la marca */
+html, body, [class*="css"] {
+    font-family: 'Bahnschrift', sans-serif !important;
+}
+
+/* Fondo principal */
+.stApp {
+    background-color: #F8F9FA;
+}
+
+/* Color de los Títulos */
+h1, h2, h3 {
+    color: #2E1E7E !important; 
+    font-weight: bold !important;
+}
+
+/* Estilo para los botones principales (Verde Menta a Azul Oscuro) */
+.stButton>button {
+    background-color: #66CCA1 !important;
+    color: #2E1E7E !important;
+    font-weight: bold !important;
+    font-size: 16px !important;
+    border-radius: 8px !important;
+    border: 2px solid #66CCA1 !important;
+    transition: all 0.3s ease;
+    width: 100%;
+}
+.stButton>button:hover {
+    background-color: #2E1E7E !important;
+    color: #FFFFFF !important;
+    border: 2px solid #2E1E7E !important;
+}
+
+/* Zona de carga de archivos (Dropzone) */
+[data-testid="stFileUploadDropzone"] {
+    border: 2px dashed #2E1E7E !important;
+    background-color: rgba(46, 30, 126, 0.05) !important;
+    border-radius: 10px !important;
+}
+
+/* Cajas de información (st.info, st.success) */
+.stAlert {
+    border-left-color: #66CCA1 !important;
+    background-color: #FFFFFF !important;
+    box-shadow: 0px 4px 6px rgba(0,0,0,0.05);
+    color: #2E1E7E !important;
+}
+
+/* Cajas de texto (Contraseña) */
+.stTextInput>div>div>input {
+    border: 1px solid #2E1E7E !important;
+    border-radius: 6px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# --- CABECERA DE LA APLICACIÓN ---
+st.markdown("<h1>📈 Convertidor Universal de Estados de Cuenta</h1>", unsafe_allow_html=True)
+st.markdown("<p style='color: #2E1E7E; font-size: 18px;'>Sube el PDF de tu estado de cuenta (Soporta BCP, BBVA, Interbank, Scotiabank y BanBif) y descárgalo en Excel corporativo al instante.</p>", unsafe_allow_html=True)
+st.write("---")
+
+col1, col2 = st.columns([2, 1])
+with col1:
+    archivo_pdf = st.file_uploader("Sube tu Estado de Cuenta (PDF)", type=["pdf"])
+with col2:
+    st.write(" ")
+    st.write(" ")
+    password_pdf = st.text_input("🔑 Contraseña del PDF (Solo si está protegido)", type="password", help="Normalmente es tu RUC o DNI")
 
 if archivo_pdf is not None:
     with st.spinner("Procesando documento con Inteligencia de Datos..."):
         try:
             reader = pypdf.PdfReader(archivo_pdf)
+            
+            if reader.is_encrypted:
+                if not password_pdf:
+                    st.warning("🔒 Este PDF está protegido con contraseña. Por favor, escribe la clave en la casilla superior y presiona Enter.")
+                    st.stop()
+                else:
+                    decrypted = reader.decrypt(password_pdf)
+                    if decrypted == 0:
+                        st.error("❌ La contraseña ingresada es incorrecta. Inténtalo de nuevo.")
+                        st.stop()
+                    else:
+                        st.success("🔓 PDF desbloqueado correctamente.")
+            
             all_text_with_coords = []
             texto_completo = ""
             for page_num, page in enumerate(reader.pages):
@@ -35,7 +116,7 @@ if archivo_pdf is not None:
                 
             sorted_keys = sorted(lines_by_page_and_y.keys(), key=lambda k: (k[0], -k[1]))
             
-            # 1. DETECCIÓN AUTOMÁTICA DEL BANCO Y AÑO
+            # 1. DETECCIÓN AUTOMÁTICA DEL BANCO
             texto_upper = texto_completo.upper()
             banco = "DESCONOCIDO"
             if "ESTADO DE CUENTA CORRIENTE" in texto_upper and "BCP" in texto_upper:
@@ -48,17 +129,17 @@ if archivo_pdf is not None:
                 banco = "SCOTIABANK"
             elif "BBVA" in texto_upper or "CONTIAHORRO" in texto_upper:
                 banco = "BBVA"
+            elif "BANBIF" in texto_upper:
+                banco = "BANBIF"
                 
             st.info(f"🏦 Banco detectado automáticamente: **{banco.replace('_', ' ')}**")
             
-            # Buscar el año del documento para formatear la fecha
             current_year = str(datetime.datetime.now().year)
             match_year = re.search(r'\b(202\d)\b', texto_completo)
             doc_year = match_year.group(1) if match_year else current_year
             
             # 2. EXTRACCIÓN DEL SALDO INICIAL EXACTO DECLARADO
             saldo_inicial_declarado = None
-            
             for key in sorted_keys:
                 items = sorted(lines_by_page_and_y[key], key=lambda i: i[0]) 
                 combined = " ".join([i[1] for i in items])
@@ -105,7 +186,25 @@ if archivo_pdf is not None:
                 fecha, desc, medio, lugar, sucursal, num_op, hora, cargo, abono, itf, saldo = [""]*11
                 es_transaccion = False
 
-                if banco == "SCOTIABANK":
+                if banco == "BANBIF":
+                    if re.match(r'^\d{2}/\d{2}/\d{2}', combined):
+                        for x, t in items:
+                            if x < 100: fecha = t
+                            elif 100 <= x < 150: pass
+                            elif 150 <= x < 380: desc += t + " "
+                            elif 380 <= x < 450: cargo = t.replace(',', '')
+                            elif 450 <= x < 510: abono = t.replace(',', '')
+                            elif x >= 510: saldo = t.replace(',', '')
+                        desc = desc.strip()
+                        if "ITF" in desc.upper():
+                            itf = cargo if cargo else abono
+                            cargo = ""
+                            abono = ""
+                        numeros = re.findall(r'\b\d{6,10}\b', desc)
+                        if numeros: num_op = numeros[-1]
+                        es_transaccion = True
+
+                elif banco == "SCOTIABANK":
                     if re.match(r'^\d{2}/\d{2}\s', combined):
                         tokens = combined.split()
                         fecha = tokens[0] 
@@ -198,33 +297,32 @@ if archivo_pdf is not None:
                 if es_transaccion:
                     data_final.append([pagina, fecha, desc, medio, lugar, sucursal, num_op, hora.strip(), cargo, abono, itf, saldo])
                     
-            # 4. FORMATEO DE DATOS, FECHAS Y CEROS
+            # 4. FORMATEO DE DATOS Y EXCEL
             columnas = ["PAGINA", "FECHA", "DESCRIPCION", "MEDIO", "LUGAR", "SUCURSAL", "NUMERO DE OPERACION", "HORA U ORIGEN", "CARGO", "ABONO", "ITF", "SALDO"]
             
-            # --- Convertidor de Fechas ---
             def formatear_fecha(fecha_str):
                 fecha_str = str(fecha_str).strip().upper()
                 if not fecha_str: return ""
                 if re.search(r'\d{4}', fecha_str): return fecha_str
                 
+                match_banbif = re.match(r'^(\d{2})/(\d{2})/(\d{2})$', fecha_str)
+                if match_banbif: return f"{match_banbif.group(1)}/{match_banbif.group(2)}/20{match_banbif.group(3)}"
+                
                 meses = {'ENE':'01', 'FEB':'02', 'MAR':'03', 'ABR':'04', 'MAY':'05', 'JUN':'06', 
                          'JUL':'07', 'AGO':'08', 'SET':'09', 'SEP':'09', 'OCT':'10', 'NOV':'11', 'DIC':'12'}
-                
                 match1 = re.match(r'^(\d{2})[/-](\d{2})$', fecha_str)
                 if match1: return f"{match1.group(1)}/{match1.group(2)}/{doc_year}"
                 match2 = re.match(r'^(\d{2})-?([A-Z]{3})$', fecha_str)
                 if match2: return f"{match2.group(1)}/{meses.get(match2.group(2), '01')}/{doc_year}"
                 return fecha_str
 
-            # --- Limpiador de Ceros ---
             def limpiar_numero_espacios(val):
                 if not val or str(val).strip() == "": return None
                 val_str = str(val).replace(',', '').strip()
                 try: 
                     num = float(val_str)
-                    return num if num != 0 else None # Retorna None (En blanco) si es 0
-                except: 
-                    return None
+                    return num if num != 0 else None
+                except: return None
             
             def parse_float_seguro(val):
                 if not val or str(val).strip() == "": return 0.0
@@ -236,7 +334,6 @@ if archivo_pdf is not None:
             if len(df_final) > 0:
                 df_final['FECHA'] = df_final['FECHA'].apply(formatear_fecha)
                 
-                # Respaldo matemático por si no se detectó el Saldo Inicial en el texto
                 if saldo_inicial_declarado is None:
                     s_primero = parse_float_seguro(data_final[0][11])
                     c_primero = parse_float_seguro(data_final[0][8])
@@ -246,28 +343,26 @@ if archivo_pdf is not None:
                 else:
                     saldo_inicial = saldo_inicial_declarado
 
-                # Limpiando los ceros para dejar las celdas en blanco
                 df_final['CARGO'] = df_final['CARGO'].apply(limpiar_numero_espacios)
                 df_final['ABONO'] = df_final['ABONO'].apply(limpiar_numero_espacios)
                 df_final['ITF'] = df_final['ITF'].apply(limpiar_numero_espacios)
-                df_final['SALDO'] = None # Lo dejamos vacío para que Python escriba la fórmula nativa de Excel
+                df_final['SALDO'] = None 
                 
-                # --- INYECTAR FILA DE "SALDO ANTERIOR" ---
                 fila_saldo_anterior = pd.DataFrame([["", "", "SALDO ANTERIOR", "", "", "", "", "", None, None, None, None]], columns=columnas)
                 df_final = pd.concat([fila_saldo_anterior, df_final], ignore_index=True)
 
                 st.success(f"✅ ¡Éxito! Se extrajeron {len(df_final) - 1} transacciones con fórmulas integradas.")
                 st.dataframe(df_final.head())
                 
-                # 5. CREACIÓN Y DISEÑO DEL EXCEL
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                     df_final.to_excel(writer, index=False, startrow=8, sheet_name="Estado de Cuenta")
                     worksheet = writer.sheets["Estado de Cuenta"]
                     
-                    color_azul_oscuro = PatternFill(start_color="002060", end_color="002060", fill_type="solid")
+                    # --- DISEÑO DEL EXCEL CON COLORES DE RESPALDO TRIBUTARIO ---
+                    color_marca = PatternFill(start_color="2E1E7E", end_color="2E1E7E", fill_type="solid")
                     fuente_blanca = Font(color="FFFFFF", bold=True)
-                    fuente_logo = Font(color="FFFFFF", bold=True, size=40, italic=True)
+                    fuente_logo = Font(name="Bahnschrift", color="FFFFFF", bold=True, size=40, italic=True)
                     borde_blanco = Border(
                         left=Side(style='medium', color="FFFFFF"), right=Side(style='medium', color="FFFFFF"),
                         top=Side(style='medium', color="FFFFFF"), bottom=Side(style='medium', color="FFFFFF")
@@ -276,10 +371,9 @@ if archivo_pdf is not None:
                     
                     ancho_tabla = len(df_final.columns)
                     
-                    # Pintar cabecera azul
                     for row in range(1, 8):
                         for col in range(1, ancho_tabla + 1):
-                            worksheet.cell(row=row, column=col).fill = color_azul_oscuro
+                            worksheet.cell(row=row, column=col).fill = color_marca
                             
                     celda_banco = worksheet.cell(row=4, column=2, value=f"  {banco.replace('_', ' ')}  ")
                     celda_banco.font = fuente_logo
@@ -290,37 +384,31 @@ if archivo_pdf is not None:
                     
                     titulos_resumen = ["SALDO DISPONIBLE", "TOTAL CARGOS", "TOTAL ABONOS", "SALDO FINAL"]
                     
-                    # Configurar Cuadro Resumen
                     for i in range(4):
                         c_tit = worksheet.cell(row=3, column=col_inicio_resumen + i, value=titulos_resumen[i])
-                        c_tit.font, c_tit.fill, c_tit.border, c_tit.alignment = fuente_blanca, color_azul_oscuro, borde_blanco, centro
+                        c_tit.font, c_tit.fill, c_tit.border, c_tit.alignment = fuente_blanca, color_marca, borde_blanco, centro
                         
                         c_val = worksheet.cell(row=4, column=col_inicio_resumen + i)
-                        c_val.font, c_val.fill, c_val.border, c_val.alignment = fuente_blanca, color_azul_oscuro, borde_blanco, centro
+                        c_val.font, c_val.fill, c_val.border, c_val.alignment = fuente_blanca, color_marca, borde_blanco, centro
                         c_val.number_format = '#,##0.00'
                     
-                    # Inyectar Valores y Fórmulas al Cuadro de Resumen
                     last_row = 9 + len(df_final)
                     
-                    worksheet.cell(row=4, column=9).value = saldo_inicial # I4 (Saldo Inicial)
-                    worksheet.cell(row=4, column=10).value = f"=SUM(I11:I{last_row}) + SUM(K11:K{last_row})" # J4 (Total Cargos + ITF)
-                    worksheet.cell(row=4, column=11).value = f"=SUM(J11:J{last_row})" # K4 (Total Abonos)
-                    worksheet.cell(row=4, column=12).value = "=I4+K4-J4" # L4 (Saldo Final = Inicial + Abonos - Cargos)
+                    worksheet.cell(row=4, column=9).value = saldo_inicial 
+                    worksheet.cell(row=4, column=10).value = f"=SUM(I11:I{last_row}) + SUM(K11:K{last_row})" 
+                    worksheet.cell(row=4, column=11).value = f"=SUM(J11:J{last_row})" 
+                    worksheet.cell(row=4, column=12).value = "=I4+K4-J4" 
                     
-                    # Inyectar Fórmulas en la columna L (SALDO)
                     for r in range(10, last_row + 1):
                         if r == 10:
-                            worksheet.cell(row=r, column=12).value = "=I4" # Saldo Anterior jala del resumen
+                            worksheet.cell(row=r, column=12).value = "=I4" 
                         else:
-                            # Formula Sucesiva: Saldo Anterior - Cargo + Abono - ITF
                             worksheet.cell(row=r, column=12).value = f"=L{r-1}-I{r}+J{r}-K{r}"
                     
-                    # Dar formato de moneda a todo
                     for r in range(10, last_row + 1):
                         for c in [9, 10, 11, 12]:
                             worksheet.cell(row=r, column=c).number_format = '#,##0.00'
                         
-                    # Auto-Ajustar Columnas
                     for col in worksheet.columns:
                         max_length = 0
                         column = col[0].column_letter
@@ -332,7 +420,7 @@ if archivo_pdf is not None:
                         worksheet.column_dimensions[column].width = min(max_length + 2, 50)
                 
                 st.download_button(
-                    label="📥 Descargar Excel Uniformizado (Formato y Fórmulas)",
+                    label="📥 Descargar Excel Corporativo (Formato y Fórmulas)",
                     data=buffer.getvalue(),
                     file_name=f"Estado_Cuenta_{banco}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
