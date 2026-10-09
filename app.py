@@ -153,7 +153,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Formulario de subida y procesamiento
 archivo_pdf = st.file_uploader("Arrastra tu estado de cuenta aquí o haz clic para subir", type=["pdf"], label_visibility="collapsed")
 password_pdf = st.text_input("🔒 Contraseña (opcional)", type="password", placeholder="Ingresa la contraseña si tu archivo la requiere")
 btn_convertir = st.button("⚙️ Convertir a Excel")
@@ -165,6 +164,8 @@ if btn_convertir:
     else:
         with st.spinner("Procesando y aplicando auditoría contable..."):
             try:
+                # 🚀 SOLUCIÓN DEL ERROR NoneType: Leemos primero para ver si tiene clave
+                archivo_pdf.seek(0)
                 reader = pypdf.PdfReader(archivo_pdf)
                 
                 if reader.is_encrypted:
@@ -172,14 +173,20 @@ if btn_convertir:
                         st.warning("🔒 Este documento tiene contraseña. Escríbela en la casilla de arriba.")
                         st.stop()
                     else:
-                        if reader.decrypt(password_pdf) == 0:
-                            st.error("❌ La contraseña ingresada es incorrecta.")
+                        # Si tiene clave, "rebobinamos" el PDF y lo abrimos inyectando la clave nativamente
+                        archivo_pdf.seek(0)
+                        reader = pypdf.PdfReader(archivo_pdf, password=password_pdf)
+                        
+                        # Probamos forzar la lectura para asegurar que la clave abrió correctamente el mapa de páginas
+                        try:
+                            _ = len(reader.pages)
+                        except Exception:
+                            st.error("❌ La contraseña ingresada es incorrecta o el archivo está dañado.")
                             st.stop()
 
                 all_text_with_coords = []
                 texto_completo = ""
                 
-                # BLINDAJE TRIPLE CONTRA TEXTOS FANTASMAS Y ERRORES DE LIBRERÍA
                 for page_num, page in enumerate(reader.pages):
                     try:
                         ext_text = page.extract_text()
@@ -188,17 +195,15 @@ if btn_convertir:
                             
                         def visitor_extract(text, cm, tm, fontDict, fontSize):
                             try:
-                                # Validación estricta de que la coordenada exista (evita el NoneType)
                                 if tm is not None and isinstance(tm, (list, tuple)) and len(tm) >= 6:
                                     x, y = tm[4], tm[5]
                                     if text and isinstance(text, str) and text.strip():
                                         all_text_with_coords.append((page_num + 1, round(x, 1), round(y, 1), text.strip()))
                             except:
-                                pass # Ignoramos el texto fantasma si ocurre
+                                pass 
                                 
                         page.extract_text(visitor_text=visitor_extract)
                     except Exception as page_err:
-                        # Si pypdf choca internamente en una página, la saltamos para no tumbar la app
                         print(f"Página saltada por error interno: {page_err}")
                         continue
                     
