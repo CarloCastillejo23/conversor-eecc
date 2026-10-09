@@ -4,6 +4,7 @@ import pandas as pd
 import io
 import re
 import datetime
+import traceback
 from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
 
 st.set_page_config(
@@ -18,311 +19,73 @@ st.markdown("""
 <style>
 @import url('https://fonts.cdnfonts.com/css/bahnschrift');
 
-/* FUENTES CORREGIDAS: Evita romper los íconos de Streamlit (el error de 'upload' y 'visibility') */
 html, body, p, h1, h2, h3, h4, h5, h6, div, span, button, input, label, a {
     font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
 }
-/* Protegemos las fuentes de íconos nativas */
 .material-symbols-rounded, .material-icons, [class*="Icon"] {
     font-family: 'Material Symbols Rounded', 'Material Icons', sans-serif !important;
 }
-
-#MainMenu, header, footer {
-    visibility: hidden;
-}
-
-.stApp {
-    background-color: #F8FBFD;
-}
-
-.block-container {
-    padding-top: 1rem !important;
-    padding-bottom: 0rem !important;
-    max-width: 1140px !important;
-}
+#MainMenu, header, footer { visibility: hidden; }
+.stApp { background-color: #F8FBFD; }
+.block-container { padding-top: 1rem !important; padding-bottom: 0rem !important; max-width: 1140px !important; }
 
 /* NAVBAR */
-.nav-container {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.8rem 0rem 1.5rem 0rem;
-    border-bottom: 1px solid #EBF1F6;
-    margin-bottom: 2rem;
-    flex-wrap: wrap;
-    gap: 1rem;
-}
-.nav-left {
-    display: flex;
-    align-items: center;
-    gap: 1.2rem;
-    flex-wrap: wrap;
-}
-.nav-logo {
-    height: 48px;
-    object-fit: contain;
-}
-.nav-tagline {
-    border-left: 1.5px solid #D5DFE7;
-    padding-left: 1.2rem;
-    color: #6C7A89;
-    font-size: 0.95rem;
-    line-height: 1.2;
-}
-.nav-right {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: #2E1E7E;
-    font-weight: 600;
-    font-size: 0.95rem;
-}
+.nav-container { display: flex; justify-content: space-between; align-items: center; padding: 0.8rem 0rem 1.5rem 0rem; border-bottom: 1px solid #EBF1F6; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem; }
+.nav-left { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; }
+.nav-logo { height: 48px; object-fit: contain; }
+.nav-tagline { border-left: 1.5px solid #D5DFE7; padding-left: 1.2rem; color: #6C7A89; font-size: 0.95rem; line-height: 1.2; }
+.nav-right { display: flex; align-items: center; gap: 0.5rem; color: #2E1E7E; font-weight: 600; font-size: 0.95rem; }
 
 /* SECCIÓN HERO */
-.hero-container {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 2rem;
-    flex-wrap: wrap;
-    gap: 2rem;
-}
-.hero-badge {
-    color: #66CCA1;
-    font-weight: 700;
-    font-size: 0.82rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    margin-bottom: 0.5rem;
-}
-.hero-title {
-    color: #2E1E7E;
-    font-size: 2.7rem;
-    font-weight: 800;
-    line-height: 1.15;
-    margin-bottom: 0.8rem;
-}
-.hero-subtitle {
-    color: #556575;
-    font-size: 1.15rem;
-    max-width: 540px;
-    line-height: 1.45;
-    margin-bottom: 1.5rem;
-}
-.banks-bar {
-    display: flex;
-    align-items: center;
-    gap: 1.8rem;
-    flex-wrap: wrap;
-}
-.bank-logo {
-    height: 24px;
-    object-fit: contain;
-    mix-blend-mode: multiply;
-}
-.doc-icon {
-    width: 48px;
-    height: 48px;
-    object-fit: contain;
-}
+.hero-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 2rem; }
+.hero-badge { color: #66CCA1; font-weight: 700; font-size: 0.82rem; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.5rem; }
+.hero-title { color: #2E1E7E; font-size: 2.7rem; font-weight: 800; line-height: 1.15; margin-bottom: 0.8rem; }
+.hero-subtitle { color: #556575; font-size: 1.15rem; max-width: 540px; line-height: 1.45; margin-bottom: 1.5rem; }
+.banks-bar { display: flex; align-items: center; gap: 1.8rem; flex-wrap: wrap; }
+.bank-logo { height: 24px; object-fit: contain; mix-blend-mode: multiply; }
+.doc-icon { width: 48px; height: 48px; object-fit: contain; }
 
 /* TARJETA PRINCIPAL */
-.main-card {
-    background: #FFFFFF;
-    border-radius: 16px;
-    padding: 2.2rem 2.8rem;
-    box-shadow: 0 10px 30px rgba(46, 30, 126, 0.05);
-    border: 1px solid #EEF3F8;
-    margin-bottom: 2rem;
-}
+.main-card { background: #FFFFFF; border-radius: 16px; padding: 2.2rem 2.8rem; box-shadow: 0 10px 30px rgba(46, 30, 126, 0.05); border: 1px solid #EEF3F8; margin-bottom: 2rem; }
 
 /* PASOS DEL PROCESO */
-.steps-container {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 2rem;
-    padding: 0 1rem;
-    flex-wrap: wrap;
-    gap: 1rem;
-}
-.step-item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-.step-num {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    font-size: 0.95rem;
-}
-.step-active {
-    background-color: #2E1E7E;
-    color: #FFFFFF;
-}
-.step-inactive {
-    background-color: #F0F4F8;
-    color: #8C9BAA;
-}
-.step-text {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #2E1E7E;
-    line-height: 1.2;
-    max-width: 140px;
-}
-.step-text-muted {
-    color: #8C9BAA;
-}
-.step-line {
-    flex-grow: 1;
-    height: 1px;
-    background-color: #E2EAF1;
-    margin: 0 1rem;
-    min-width: 50px;
-}
+.steps-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; padding: 0 1rem; flex-wrap: wrap; gap: 1rem; }
+.step-item { display: flex; align-items: center; gap: 0.75rem; }
+.step-num { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.95rem; }
+.step-active { background-color: #2E1E7E; color: #FFFFFF; }
+.step-inactive { background-color: #F0F4F8; color: #8C9BAA; }
+.step-text { font-size: 0.9rem; font-weight: 600; color: #2E1E7E; line-height: 1.2; max-width: 140px; }
+.step-text-muted { color: #8C9BAA; }
+.step-line { flex-grow: 1; height: 1px; background-color: #E2EAF1; margin: 0 1rem; min-width: 50px; }
 
 /* DROPZONE STYLING */
-[data-testid="stFileUploadDropzone"] {
-    background: #FDFEFF !important;
-    border: 2px dashed #B8D4FC !important;
-    border-radius: 16px !important;
-    padding: 2.5rem 1rem !important;
-    text-align: center !important;
-    transition: all 0.3s ease;
-}
-[data-testid="stFileUploadDropzone"]:hover {
-    border-color: #2E1E7E !important;
-    background: #F8FBFF !important;
-}
+[data-testid="stFileUploadDropzone"] { background: #FDFEFF !important; border: 2px dashed #B8D4FC !important; border-radius: 16px !important; padding: 2.5rem 1rem !important; text-align: center !important; transition: all 0.3s ease; }
+[data-testid="stFileUploadDropzone"]:hover { border-color: #2E1E7E !important; background: #F8FBFF !important; }
 
 /* BOTONES STREAMLIT */
-.stButton>button {
-    background: #2E1E7E !important;
-    color: #FFFFFF !important;
-    font-size: 1.05rem !important;
-    font-weight: 700 !important;
-    padding: 0.75rem 2rem !important;
-    border-radius: 10px !important;
-    border: none !important;
-    box-shadow: 0 4px 14px rgba(46, 30, 126, 0.25) !important;
-    width: 100% !important;
-    transition: all 0.3s ease !important;
-}
-.stButton>button:hover {
-    background: #231666 !important;
-    box-shadow: 0 6px 18px rgba(46, 30, 126, 0.35) !important;
-    transform: translateY(-1px);
-}
+.stButton>button { background: #2E1E7E !important; color: #FFFFFF !important; font-size: 1.05rem !important; font-weight: 700 !important; padding: 0.75rem 2rem !important; border-radius: 10px !important; border: none !important; box-shadow: 0 4px 14px rgba(46, 30, 126, 0.25) !important; width: 100% !important; transition: all 0.3s ease !important; }
+.stButton>button:hover { background: #231666 !important; box-shadow: 0 6px 18px rgba(46, 30, 126, 0.35) !important; transform: translateY(-1px); }
+.stDownloadButton>button { background: #66CCA1 !important; color: #2E1E7E !important; font-size: 1.1rem !important; font-weight: 800 !important; border-radius: 10px !important; border: none !important; box-shadow: 0 4px 14px rgba(102, 204, 161, 0.35) !important; width: 100% !important; }
+.stDownloadButton>button:hover { background: #55b78f !important; color: #1A104E !important; }
 
-.stDownloadButton>button {
-    background: #66CCA1 !important;
-    color: #2E1E7E !important;
-    font-size: 1.1rem !important;
-    font-weight: 800 !important;
-    border-radius: 10px !important;
-    border: none !important;
-    box-shadow: 0 4px 14px rgba(102, 204, 161, 0.35) !important;
-    width: 100% !important;
-}
-.stDownloadButton>button:hover {
-    background: #55b78f !important;
-    color: #1A104E !important;
-}
+/* ERRORES */
+.stAlert { white-space: pre-wrap !important; word-wrap: break-word !important; }
 
 /* TARJETAS INFERIORES DE CARACTERÍSTICAS */
-.features-container {
-    display: flex;
-    justify-content: space-between;
-    gap: 1.5rem;
-    background: #F1F8F8;
-    border: 1px solid #E1EEEE;
-    border-radius: 14px;
-    padding: 1.4rem 2.2rem;
-    margin-bottom: 3.5rem;
-    flex-wrap: wrap;
-}
-.feature-item {
-    display: flex;
-    align-items: center;
-    gap: 0.9rem;
-    flex: 1;
-    min-width: 200px;
-}
-.feature-icon-box {
-    width: 44px;
-    height: 44px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #FFFFFF;
-    color: #66CCA1;
-    font-size: 1.4rem;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
-}
-.feature-text {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: #2E1E7E;
-    line-height: 1.25;
-}
+.features-container { display: flex; justify-content: space-between; gap: 1.5rem; background: #F1F8F8; border: 1px solid #E1EEEE; border-radius: 14px; padding: 1.4rem 2.2rem; margin-bottom: 3.5rem; flex-wrap: wrap; }
+.feature-item { display: flex; align-items: center; gap: 0.9rem; flex: 1; min-width: 200px; }
+.feature-icon-box { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: #FFFFFF; color: #66CCA1; font-size: 1.4rem; box-shadow: 0 2px 6px rgba(0,0,0,0.04); }
+.feature-text { font-size: 0.95rem; font-weight: 700; color: #2E1E7E; line-height: 1.25; }
 
-/* FOOTER CORREGIDO */
-.footer-container {
-    background: #181145;
-    padding: 2.2rem 2rem;
-    border-radius: 18px 18px 0 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 1.5rem;
-    color: #A6B4C9;
-    font-size: 0.9rem;
-    margin-top: 2rem;
-}
-.footer-left {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 1.5rem;
-}
-.footer-logo {
-    height: 38px;
-    object-fit: contain;
-}
-.footer-copy {
-    border-left: 1px solid rgba(255,255,255,0.2);
-    padding-left: 1.5rem;
-    color: #CAD5E2;
-}
-.footer-links {
-    display: flex;
-    gap: 1.5rem;
-    flex-wrap: wrap;
-}
-.footer-links a {
-    color: #CAD5E2;
-    text-decoration: none;
-    white-space: nowrap;
-    transition: color 0.2s ease;
-}
-.footer-links a:hover {
-    color: #66CCA1;
-}
-
-@media (max-width: 768px) {
-    .footer-copy {
-        border-left: none;
-        padding-left: 0;
-    }
-}
+/* FOOTER */
+.footer-container { background: #181145; padding: 2.2rem 2rem; border-radius: 18px 18px 0 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1.5rem; color: #A6B4C9; font-size: 0.9rem; margin-top: 2rem; }
+.footer-left { display: flex; align-items: center; flex-wrap: wrap; gap: 1.5rem; }
+.footer-logo { height: 38px; object-fit: contain; }
+.footer-copy { border-left: 1px solid rgba(255,255,255,0.2); padding-left: 1.5rem; color: #CAD5E2; }
+.footer-links { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+.footer-links a { color: #CAD5E2; text-decoration: none; white-space: nowrap; transition: color 0.2s ease; }
+.footer-links a:hover { color: #66CCA1; }
+@media (max-width: 768px) { .footer-copy { border-left: none; padding-left: 0; } }
 </style>
 """, unsafe_allow_html=True)
 
@@ -415,15 +178,29 @@ if btn_convertir:
 
                 all_text_with_coords = []
                 texto_completo = ""
+                
+                # BLINDAJE TRIPLE CONTRA TEXTOS FANTASMAS Y ERRORES DE LIBRERÍA
                 for page_num, page in enumerate(reader.pages):
-                    texto_completo += page.extract_text() + " "
-                    def visitor_extract(text, cm, tm, fontDict, fontSize):
-                        # BLINDAJE CONTRA TEXTOS FANTASMAS (Manejo del error NoneType)
-                        if tm is not None:
-                            x, y = tm[4], tm[5]
-                            if text.strip():
-                                all_text_with_coords.append((page_num + 1, round(x, 1), round(y, 1), text.strip()))
-                    page.extract_text(visitor_text=visitor_extract)
+                    try:
+                        ext_text = page.extract_text()
+                        if ext_text: 
+                            texto_completo += ext_text + " "
+                            
+                        def visitor_extract(text, cm, tm, fontDict, fontSize):
+                            try:
+                                # Validación estricta de que la coordenada exista (evita el NoneType)
+                                if tm is not None and isinstance(tm, (list, tuple)) and len(tm) >= 6:
+                                    x, y = tm[4], tm[5]
+                                    if text and isinstance(text, str) and text.strip():
+                                        all_text_with_coords.append((page_num + 1, round(x, 1), round(y, 1), text.strip()))
+                            except:
+                                pass # Ignoramos el texto fantasma si ocurre
+                                
+                        page.extract_text(visitor_text=visitor_extract)
+                    except Exception as page_err:
+                        # Si pypdf choca internamente en una página, la saltamos para no tumbar la app
+                        print(f"Página saltada por error interno: {page_err}")
+                        continue
                     
                 lines_by_page_and_y = {}
                 for p, x, y, text in all_text_with_coords:
@@ -457,7 +234,7 @@ if btn_convertir:
                 saldo_inicial_declarado = None
                 for key in sorted_keys:
                     items = sorted(lines_by_page_and_y[key], key=lambda i: i[0]) 
-                    combined = " ".join([i[1] for i in items])
+                    combined = " ".join([str(i[1]) for i in items])
                     
                     if banco == "SCOTIABANK" and "Saldo Final al" in combined and re.search(r'\d{4}', combined):
                         try: saldo_inicial_declarado = float(combined.split()[-1].replace(',', ''))
@@ -468,15 +245,15 @@ if btn_convertir:
                         except: pass
                         break
                     elif banco == "INTERBANK":
-                        if len(items) > 3 and not re.search(r'[a-zA-Z]', combined) and items[0][1].replace(',', '').replace('.', '').isdigit():
+                        if len(items) > 3 and not re.search(r'[a-zA-Z]', combined) and str(items[0][1]).replace(',', '').replace('.', '').isdigit():
                             try:
-                                numeros = re.findall(r'\d{1,3}(?:,\d{3})*\.\d{2}', items[0][1])
+                                numeros = re.findall(r'\d{1,3}(?:,\d{3})*\.\d{2}', str(items[0][1]))
                                 saldo_inicial_declarado = float(numeros[1].replace(',', '')) if len(numeros) > 1 else float(numeros[0].replace(',', ''))
                             except: pass
                             break
                     elif banco == "BCP_CORRIENTE":
                         if len(items) > 5 and not re.search(r'[a-zA-Z]', combined):
-                            try: saldo_inicial_declarado = float(items[0][1].replace(',', ''))
+                            try: saldo_inicial_declarado = float(str(items[0][1]).replace(',', ''))
                             except: pass
                             break
 
@@ -485,7 +262,7 @@ if btn_convertir:
                 
                 for key in sorted_keys:
                     items = sorted(lines_by_page_and_y[key], key=lambda i: i[0]) 
-                    combined = " ".join([i[1] for i in items])
+                    combined = " ".join([str(i[1]) for i in items])
                     pagina = key[0]
                     
                     fecha, desc, medio, lugar, sucursal, num_op, hora, cargo, abono, itf, saldo = [""]*11
@@ -494,6 +271,7 @@ if btn_convertir:
                     if banco == "BANBIF":
                         if re.match(r'^\d{2}/\d{2}/\d{2}', combined):
                             for x, t in items:
+                                t = str(t)
                                 if x < 100: fecha = t
                                 elif 150 <= x < 380: desc += t + " "
                                 elif 380 <= x < 450: cargo = t.replace(',', '')
@@ -520,44 +298,48 @@ if btn_convertir:
                                 elif round(saldo_previo + monto_float, 2) == round(saldo_float, 2): abono = monto_raw
                                 saldo_previo = saldo_float
                             except: cargo = monto_raw
-                            num_op = tokens[-3] 
-                            medio = tokens[2] 
-                            desc = " ".join(tokens[3:-3]) 
+                            if len(tokens) >= 3:
+                                num_op = tokens[-3] 
+                                medio = tokens[2] 
+                                desc = " ".join(tokens[3:-3]) 
                             es_transaccion = True
 
                     elif banco == "INTERBANK":
                         if re.match(r'^\d{2}/\d{2}\s+\d{2}/\d{2}', combined):
                             tokens = combined.split()
-                            fecha = tokens[0]
-                            saldo = tokens[-1]
-                            monto_raw = tokens[-2]
-                            cargo = monto_raw.replace('-', '') if '-' in monto_raw else ""
-                            abono = monto_raw if '-' not in monto_raw else ""
-                            num_op_match = re.search(r'\b\d{7}\b', combined)
-                            if num_op_match: num_op = num_op_match.group(0)
-                            middle_tokens = tokens[2:-2]
-                            if "WEB" in middle_tokens: medio = "WEB"
-                            elif "INTERNO" in middle_tokens: medio = "INTERNO"
-                            desc_tokens = [t for t in middle_tokens if t != num_op and t != medio]
-                            desc = " ".join(desc_tokens)
-                            es_transaccion = True
+                            if len(tokens) >= 3:
+                                fecha = tokens[0]
+                                saldo = tokens[-1]
+                                monto_raw = tokens[-2]
+                                cargo = monto_raw.replace('-', '') if '-' in monto_raw else ""
+                                abono = monto_raw if '-' not in monto_raw else ""
+                                num_op_match = re.search(r'\b\d{7}\b', combined)
+                                if num_op_match: num_op = num_op_match.group(0)
+                                middle_tokens = tokens[2:-2]
+                                if "WEB" in middle_tokens: medio = "WEB"
+                                elif "INTERNO" in middle_tokens: medio = "INTERNO"
+                                desc_tokens = [t for t in middle_tokens if t != num_op and t != medio]
+                                desc = " ".join(desc_tokens)
+                                es_transaccion = True
 
                     elif banco == "BCP_AHORROS":
                         if re.match(r'^\d{2}[A-Z]{3}\s', combined):
-                            raw_str = items[0][1] if len(items)==1 else combined
+                            raw_str = str(items[0][1]) if len(items)==1 else combined
                             tokens = raw_str.split()
-                            fecha = tokens[0]
-                            monto = tokens[-1]
-                            idx = raw_str.rfind(monto)
-                            if idx > 60: abono = monto
-                            else: cargo = monto
-                            inicio_desc = 2 if re.match(r'^\d{2}[A-Z]{3}$', tokens[1]) else 1
-                            desc = " ".join(tokens[inicio_desc:-1])
-                            es_transaccion = True
+                            if len(tokens) >= 2:
+                                fecha = tokens[0]
+                                monto = tokens[-1]
+                                idx = raw_str.rfind(monto)
+                                if idx > 60: abono = monto
+                                else: cargo = monto
+                                inicio_desc = 2 if re.match(r'^\d{2}[A-Z]{3}$', tokens[1]) else 1
+                                desc = " ".join(tokens[inicio_desc:-1])
+                                es_transaccion = True
 
                     elif banco == "BBVA":
-                        if len(items) > 3 and re.match(r'^\d{2}-\d{2}$', items[0][1]):
+                        if len(items) > 3 and re.match(r'^\d{2}-\d{2}$', str(items[0][1])):
                             for x, t in items:
+                                t = str(t)
                                 if x < 60: fecha = t
                                 elif 100 < x < 250: desc += t + " "
                                 elif 250 < x < 310: sucursal = t 
@@ -574,28 +356,29 @@ if btn_convertir:
                     elif banco == "BCP_CORRIENTE":
                         if re.match(r'^\d{2}-\d{2}\s', combined):
                             tokens = combined.split()
-                            fecha = tokens[0]
-                            saldo = tokens[-1]
-                            monto_raw = tokens[-2]
-                            cargo = monto_raw.replace('-', '') if '-' in monto_raw else ""
-                            abono = monto_raw if '-' not in monto_raw else ""
-                            middle = tokens[1:-2] 
-                            medios_conocidos = ["BPI", "POS", "VEN", "INT", "CAJ", "TLC", "BPT"]
-                            medio_index = next((i for i, t in enumerate(middle) if t in medios_conocidos), -1)
-                            if medio_index != -1:
-                                desc = " ".join(middle[:medio_index])
-                                rest = middle[medio_index+1:]
-                                medio = middle[medio_index]
-                            else:
-                                desc = " ".join(middle[:3]) 
-                                rest = middle[3:]
-                            for t in rest:
-                                if re.match(r'^\d{3}-\d{3}$', t): lugar = t 
-                                elif re.match(r'^\d{2}:\d{2}$', t): hora = t 
-                                elif re.match(r'^\d{6}$', t): num_op = t 
-                                elif re.match(r'^\d{4}$', t): sucursal = t 
-                                elif len(t) == 6 and t.isalnum(): hora += f" {t}"
-                            es_transaccion = True
+                            if len(tokens) >= 3:
+                                fecha = tokens[0]
+                                saldo = tokens[-1]
+                                monto_raw = tokens[-2]
+                                cargo = monto_raw.replace('-', '') if '-' in monto_raw else ""
+                                abono = monto_raw if '-' not in monto_raw else ""
+                                middle = tokens[1:-2] 
+                                medios_conocidos = ["BPI", "POS", "VEN", "INT", "CAJ", "TLC", "BPT"]
+                                medio_index = next((i for i, t in enumerate(middle) if t in medios_conocidos), -1)
+                                if medio_index != -1:
+                                    desc = " ".join(middle[:medio_index])
+                                    rest = middle[medio_index+1:]
+                                    medio = middle[medio_index]
+                                else:
+                                    desc = " ".join(middle[:3]) 
+                                    rest = middle[3:]
+                                for t in rest:
+                                    if re.match(r'^\d{3}-\d{3}$', t): lugar = t 
+                                    elif re.match(r'^\d{2}:\d{2}$', t): hora = t 
+                                    elif re.match(r'^\d{6}$', t): num_op = t 
+                                    elif re.match(r'^\d{4}$', t): sucursal = t 
+                                    elif len(t) == 6 and t.isalnum(): hora += f" {t}"
+                                es_transaccion = True
 
                     if es_transaccion:
                         data_final.append([pagina, fecha, desc, medio, lugar, sucursal, num_op, hora.strip(), cargo, abono, itf, saldo])
@@ -713,7 +496,8 @@ if btn_convertir:
                 else:
                     st.warning("⚠️ No se identificaron transacciones procesables en el archivo.")
             except Exception as e:
-                st.error(f"❌ Ocurrió un error al procesar el archivo: {e}")
+                error_details = traceback.format_exc()
+                st.error(f"❌ Ocurrió un error al procesar el archivo:\n\n{error_details}")
 
 # --- SECCIÓN INFERIOR DE CARACTERÍSTICAS ---
 st.markdown("""
