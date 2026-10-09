@@ -108,7 +108,7 @@ st.markdown("""
 .bank-logo {
     height: 24px;
     object-fit: contain;
-    mix-blend-mode: multiply; /* Quita el fondo blanco de los JPGs */
+    mix-blend-mode: multiply; /* Evita fondos blancos en JPGs/PNGs opacos */
 }
 .doc-icon {
     width: 48px;
@@ -309,7 +309,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# --- SECCIÓN HERO (ACTUALIZADA CON LOGOS) ---
+# --- SECCIÓN HERO (ACTUALIZADA CON NUEVOS LOGOS) ---
 st.markdown("""
 <div class="hero-container">
     <div>
@@ -320,8 +320,8 @@ st.markdown("""
             <img src="https://i.postimg.cc/rsGdSkRT/bcp-logo.png" class="bank-logo" alt="BCP">
             <img src="https://i.postimg.cc/WzcFF33n/BBVA-2025.png" class="bank-logo" alt="BBVA">
             <img src="https://i.postimg.cc/6qV7dX4t/Interbank-logo-svg.webp" class="bank-logo" alt="Interbank">
-            <img src="https://i.postimg.cc/L5FYYXXt/scotiabank-logo-icon-168845.webp" class="bank-logo" alt="Scotiabank">
-            <img src="https://i.postimg.cc/NfgFWZrB/Banbif-logo.jpg" class="bank-logo" alt="BanBif">
+            <img src="https://i.postimg.cc/MGyvkwtH/SCOTIABANK.png" class="bank-logo" alt="Scotiabank">
+            <img src="https://i.postimg.cc/bvQsXPLd/banbif-logo-png-seeklogo-502109.png" class="bank-logo" alt="BanBif">
         </div>
     </div>
     <div>
@@ -396,7 +396,9 @@ if btn_convertir:
                 lines_by_page_and_y = {}
                 for p, x, y, text in all_text_with_coords:
                     key = (p, y)
-                    lines_by_page_and_y.setdefault(key, []).append((x, text))
+                    if key not in lines_by_page_and_y:
+                        lines_by_page_and_y[key] = []
+                    lines_by_page_and_y[key].append((x, text))
                     
                 sorted_keys = sorted(lines_by_page_and_y.keys(), key=lambda k: (k[0], -k[1]))
                 
@@ -426,11 +428,13 @@ if btn_convertir:
                     combined = " ".join([i[1] for i in items])
                     
                     if banco == "SCOTIABANK" and "Saldo Final al" in combined and re.search(r'\d{4}', combined):
-                        try: saldo_inicial_declarado = float(combined.split()[-1].replace(',', ''))
+                        try: 
+                            saldo_inicial_declarado = float(combined.split()[-1].replace(',', ''))
                         except: pass
                         break
                     elif banco in ["BBVA", "BCP_AHORROS"] and "SALDO ANTERIOR" in combined:
-                        try: saldo_inicial_declarado = float(combined.split()[-1].replace(',', ''))
+                        try: 
+                            saldo_inicial_declarado = float(combined.split()[-1].replace(',', ''))
                         except: pass
                         break
                     elif banco == "INTERBANK":
@@ -442,7 +446,8 @@ if btn_convertir:
                             break
                     elif banco == "BCP_CORRIENTE":
                         if len(items) > 5 and not re.search(r'[a-zA-Z]', combined):
-                            try: saldo_inicial_declarado = float(items[0][1].replace(',', ''))
+                            try: 
+                                saldo_inicial_declarado = float(items[0][1].replace(',', ''))
                             except: pass
                             break
 
