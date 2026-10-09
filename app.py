@@ -164,24 +164,27 @@ if btn_convertir:
     else:
         with st.spinner("Procesando y aplicando auditoría contable..."):
             try:
-                # 🚀 SOLUCIÓN DEL ERROR NoneType: Leemos primero para ver si tiene clave
                 archivo_pdf.seek(0)
                 reader = pypdf.PdfReader(archivo_pdf)
                 
+                # --- SOLUCIÓN A LA ENCRIPTACIÓN BANCARIA (AES-256) ---
                 if reader.is_encrypted:
                     if not password_pdf:
                         st.warning("🔒 Este documento tiene contraseña. Escríbela en la casilla de arriba.")
                         st.stop()
                     else:
-                        # Si tiene clave, "rebobinamos" el PDF y lo abrimos inyectando la clave nativamente
-                        archivo_pdf.seek(0)
-                        reader = pypdf.PdfReader(archivo_pdf, password=password_pdf)
-                        
-                        # Probamos forzar la lectura para asegurar que la clave abrió correctamente el mapa de páginas
                         try:
-                            _ = len(reader.pages)
-                        except Exception:
-                            st.error("❌ La contraseña ingresada es incorrecta o el archivo está dañado.")
+                            # 1. Quitamos espacios en blanco accidentales que el usuario pudo tipear
+                            clave_limpia = password_pdf.strip()
+                            
+                            # 2. Desencriptamos de manera segura
+                            resultado = reader.decrypt(clave_limpia)
+                            if resultado == 0:
+                                st.error("❌ La contraseña ingresada es incorrecta.")
+                                st.stop()
+                                
+                        except Exception as dec_err:
+                            st.error("🛡️ Seguridad Bancaria detectada: Para leer este PDF encriptado, asegúrate de haber añadido la palabra **cryptography** en tu archivo requirements.txt de GitHub.")
                             st.stop()
 
                 all_text_with_coords = []
@@ -204,7 +207,6 @@ if btn_convertir:
                                 
                         page.extract_text(visitor_text=visitor_extract)
                     except Exception as page_err:
-                        print(f"Página saltada por error interno: {page_err}")
                         continue
                     
                 lines_by_page_and_y = {}
