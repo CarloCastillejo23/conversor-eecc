@@ -7,7 +7,7 @@ import datetime
 import traceback
 import urllib.request
 from PIL import Image as PILImage
-from openpyxl.styles import Font, Border, Side, Alignment
+from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
 from openpyxl.drawing.image import Image as OpenpyxlImage
 
 # --- VERIFICADOR DE LLAVE MAESTRA ---
@@ -269,7 +269,7 @@ if btn_convertir:
                     moneda = "DOLARES"
                     
                 titulo_excel = f"{tipo_cuenta} {moneda}"
-
+                
                 match_year = re.search(r'\b(202\d)\b', texto_completo)
                 doc_year = match_year.group(1) if match_year else str(datetime.datetime.now().year)
                 
@@ -481,8 +481,12 @@ if btn_convertir:
                         df_final.to_excel(writer, index=False, startrow=8, sheet_name="Estado de Cuenta")
                         worksheet = writer.sheets["Estado de Cuenta"]
                         
-                        # --- DISEÑO BLANCO Y NEGRO (EXCEPTO LOGO) ---
+                        # --- DISEÑO BLANCO Y NEGRO (FONDO DE LA CABECERA ES BLANCO) ---
+                        worksheet.sheet_view.showGridLines = False
+                        color_blanco = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+                        
                         fuente_negra_bold = Font(name="Bahnschrift", color="000000", bold=True)
+                        fuente_normal = Font(name="Bahnschrift", color="000000", bold=False)
                         fuente_titulo = Font(name="Bahnschrift", color="000000", bold=True, size=12)
                         fuente_logo_fallback = Font(name="Bahnschrift", color="000000", bold=True, size=36, italic=True)
                         borde_negro = Border(
@@ -492,7 +496,24 @@ if btn_convertir:
                         centro = Alignment(horizontal="center", vertical="center")
                         
                         ancho_tabla = len(df_final.columns)
+                        last_row = 9 + len(df_final)
+
+                        # PINTAR LAS 8 PRIMERAS FILAS DE BLANCO SÓLIDO
+                        for row in range(1, 9):
+                            for col in range(1, ancho_tabla + 1):
+                                worksheet.cell(row=row, column=col).fill = color_blanco
+
+                        # APLICAR BORDES Y NEGRITAS A LA TABLA INFERIOR (Desde fila 9)
+                        for row in range(9, last_row + 1):
+                            for col in range(1, ancho_tabla + 1):
+                                cell = worksheet.cell(row=row, column=col)
+                                cell.border = borde_negro
+                                if row == 9 or row == 10:
+                                    cell.font = fuente_negra_bold
+                                else:
+                                    cell.font = fuente_normal
                                 
+                        # INYECTAR LOGO DEL BANCO
                         logo_url = logos_bancos_urls.get(banco)
                         if logo_url:
                             try:
@@ -514,9 +535,10 @@ if btn_convertir:
                         else:
                             worksheet.cell(row=4, column=2, value=f"  {banco.replace('_', ' ')}  ").font = fuente_logo_fallback
                         
-                        # Inyectar Subtítulo Dinámico (Tipo de cuenta y Moneda)
+                        # INYECTAR SUBTÍTULO DINÁMICO
                         worksheet.cell(row=7, column=2, value=titulo_excel).font = fuente_titulo
                         
+                        # CUADRO DE RESUMEN
                         col_inicio_resumen = max(ancho_tabla - 3, 6)
                         titulos_resumen = ["SALDO DISPONIBLE", "TOTAL CARGOS", "TOTAL ABONOS", "SALDO FINAL"]
                         
@@ -528,7 +550,6 @@ if btn_convertir:
                             c_val.font, c_val.border, c_val.alignment = fuente_negra_bold, borde_negro, centro
                             c_val.number_format = '#,##0.00'
                         
-                        last_row = 9 + len(df_final)
                         worksheet.cell(row=4, column=9).value = saldo_inicial 
                         worksheet.cell(row=4, column=10).value = f"=SUM(I11:I{last_row}) + SUM(K11:K{last_row})" 
                         worksheet.cell(row=4, column=11).value = f"=SUM(J11:J{last_row})" 
@@ -549,7 +570,7 @@ if btn_convertir:
                             worksheet.column_dimensions[col[0].column_letter].width = min(max_len + 3, 50)
                     
                     st.download_button(
-                        label="📥 Descargar archivo Excel",
+                        label="📥 Descargar Excel Uniformizado (Formato y Fórmulas)",
                         data=buffer.getvalue(),
                         file_name=f"Estado_Cuenta_{banco}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -558,7 +579,7 @@ if btn_convertir:
                     st.warning("⚠️ No se identificaron transacciones procesables en el archivo.")
             except Exception as e:
                 error_details = traceback.format_exc()
-                st.error(f"❌ Ocurrió un error al procesar el archivo:\n\n{error_details}")
+                st.error(f"❌ Ocurrió un error general al procesar el archivo:\n\n{error_details}")
 
 # --- SECCIÓN INFERIOR DE CARACTERÍSTICAS ---
 st.markdown("""
