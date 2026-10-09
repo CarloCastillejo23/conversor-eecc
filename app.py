@@ -5,7 +5,10 @@ import io
 import re
 import datetime
 import traceback
+import urllib.request
+from PIL import Image as PILImage
 from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
+from openpyxl.drawing.image import Image as OpenpyxlImage
 
 # --- VERIFICADOR DE LLAVE MAESTRA ---
 try:
@@ -74,6 +77,9 @@ html, body, p, h1, h2, h3, h4, h5, h6, div, span, button, input, label, a {
 .stButton>button:hover { background: #231666 !important; box-shadow: 0 6px 18px rgba(46, 30, 126, 0.35) !important; transform: translateY(-1px); }
 .stDownloadButton>button { background: #66CCA1 !important; color: #2E1E7E !important; font-size: 1.1rem !important; font-weight: 800 !important; border-radius: 10px !important; border: none !important; box-shadow: 0 4px 14px rgba(102, 204, 161, 0.35) !important; width: 100% !important; }
 .stDownloadButton>button:hover { background: #55b78f !important; color: #1A104E !important; }
+
+/* ERRORES */
+.stAlert { white-space: pre-wrap !important; word-wrap: break-word !important; }
 
 /* TARJETAS INFERIORES DE CARACTERÍSTICAS */
 .features-container { display: flex; justify-content: space-between; gap: 1.5rem; background: #F1F8F8; border: 1px solid #E1EEEE; border-radius: 14px; padding: 1.4rem 2.2rem; margin-bottom: 3.5rem; flex-wrap: wrap; }
@@ -161,12 +167,21 @@ archivo_pdf = st.file_uploader("Arrastra tu estado de cuenta aquí o haz clic pa
 password_pdf = st.text_input("🔒 Contraseña (opcional)", type="password", placeholder="Ingresa la contraseña si tu archivo la requiere")
 btn_convertir = st.button("⚙️ Convertir a Excel")
 
-# --- MOTOR DE EXTRACCIÓN (CON PIKEPDF INTEGRADO) ---
+# --- URLs DE LOS LOGOS DE LOS BANCOS ---
+logos_bancos_urls = {
+    "BCP_CORRIENTE": "https://i.postimg.cc/rsGdSkRT/bcp-logo.png",
+    "BCP_AHORROS": "https://i.postimg.cc/rsGdSkRT/bcp-logo.png",
+    "BBVA": "https://i.postimg.cc/WzcFF33n/BBVA-2025.png",
+    "INTERBANK": "https://i.postimg.cc/6qV7dX4t/Interbank-logo-svg.webp",
+    "SCOTIABANK": "https://i.postimg.cc/MGyvkwtH/SCOTIABANK.png",
+    "BANBIF": "https://i.postimg.cc/bvQsXPLd/banbif-logo-png-seeklogo-502109.png"
+}
+
+# --- MOTOR DE EXTRACCIÓN Y CONVERSIÓN ---
 if btn_convertir:
     if archivo_pdf is None:
         st.warning("⚠️ Primero debes seleccionar o arrastrar un archivo PDF.")
     else:
-        # Validación de Seguridad
         if not HAS_PIKEPDF:
             st.error("🚨 FALTA INSTALAR LA LLAVE MAESTRA (pikepdf) 🚨\n\nPor favor, ve a tu GitHub, abre el archivo `requirements.txt` y agrega la palabra `pikepdf` en una nueva línea. Luego, reinicia la aplicación haciendo clic en 'Manage App' -> 'Reboot app'.")
             st.stop()
@@ -175,25 +190,18 @@ if btn_convertir:
             try:
                 archivo_bytes = archivo_pdf.getvalue()
                 
-                # --- NUEVA DESENCRIPTACIÓN INFALIBLE CON PIKEPDF ---
                 try:
-                    # 1. Intentamos abrir el archivo tal cual (por si no tiene clave)
                     pdf_document = pikepdf.Pdf.open(io.BytesIO(archivo_bytes))
                     pdf_unlocked = io.BytesIO()
                     pdf_document.save(pdf_unlocked)
                     pdf_unlocked.seek(0)
-                    
                 except pikepdf.PasswordError:
-                    # 2. Si pikepdf rebota porque detecta un candado
                     if not password_pdf:
                         st.warning("🔒 Este documento tiene contraseña. Escríbela en la casilla de arriba.")
                         st.stop()
                     try:
-                        # 3. Abrimos el candado con la contraseña
                         clave_limpia = password_pdf.strip()
                         pdf_document = pikepdf.Pdf.open(io.BytesIO(archivo_bytes), password=clave_limpia)
-                        
-                        # 4. Guardamos un clon limpio y sin contraseña en la memoria temporal
                         pdf_unlocked = io.BytesIO()
                         pdf_document.save(pdf_unlocked)
                         pdf_unlocked.seek(0)
@@ -201,10 +209,7 @@ if btn_convertir:
                         st.error("❌ La contraseña ingresada es incorrecta.")
                         st.stop()
                 
-                # --- LECTURA SEGURA ---
-                # Le pasamos a pypdf el archivo temporal que ya fue "curado" y desbloqueado por pikepdf
                 reader = pypdf.PdfReader(pdf_unlocked)
-                
                 all_text_with_coords = []
                 texto_completo = ""
                 
@@ -459,6 +464,7 @@ if btn_convertir:
                     st.success(f"✅ ¡Conversión completada! Se procesaron {len(df_final) - 1} transacciones.")
                     st.dataframe(df_final.head(10))
                     
+                    # --- CREACIÓN DEL EXCEL Y PEGADO DE LOGO ---
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                         df_final.to_excel(writer, index=False, startrow=8, sheet_name="Estado de Cuenta")
@@ -466,7 +472,7 @@ if btn_convertir:
                         
                         color_marca = PatternFill(start_color="2E1E7E", end_color="2E1E7E", fill_type="solid")
                         fuente_blanca = Font(name="Bahnschrift", color="FFFFFF", bold=True)
-                        fuente_logo = Font(name="Bahnschrift", color="FFFFFF", bold=True, size=36, italic=True)
+                        fuente_fallback = Font(name="Bahnschrift", color="FFFFFF", bold=True, size=36, italic=True)
                         borde_blanco = Border(
                             left=Side(style='medium', color="FFFFFF"), right=Side(style='medium', color="FFFFFF"),
                             top=Side(style='medium', color="FFFFFF"), bottom=Side(style='medium', color="FFFFFF")
@@ -478,8 +484,35 @@ if btn_convertir:
                             for col in range(1, ancho_tabla + 1):
                                 worksheet.cell(row=row, column=col).fill = color_marca
                                 
-                        celda_banco = worksheet.cell(row=4, column=2, value=f"  {banco.replace('_', ' ')}  ")
-                        celda_banco.font = fuente_logo
+                        # Magia: Descargar e insertar el logo del banco
+                        logo_url = logos_bancos_urls.get(banco)
+                        if logo_url:
+                            try:
+                                req = urllib.request.Request(logo_url, headers={'User-Agent': 'Mozilla/5.0'})
+                                with urllib.request.urlopen(req) as response:
+                                    img_data = io.BytesIO(response.read())
+                                
+                                # Convertimos a PNG puro en memoria para asegurar que Excel lo lea
+                                pil_img = PILImage.open(img_data)
+                                png_io = io.BytesIO()
+                                pil_img.save(png_io, format="PNG")
+                                png_io.seek(0)
+                                
+                                img_excel = OpenpyxlImage(png_io)
+                                # Ajuste de tamaño corporativo para la cabecera
+                                target_height = 80
+                                aspect_ratio = pil_img.width / pil_img.height
+                                img_excel.height = target_height
+                                img_excel.width = int(target_height * aspect_ratio)
+                                
+                                worksheet.add_image(img_excel, 'B2')
+                            except Exception as img_err:
+                                print(f"Logo no cargó: {img_err}")
+                                celda_banco = worksheet.cell(row=4, column=2, value=f"  {banco.replace('_', ' ')}  ")
+                                celda_banco.font = fuente_fallback
+                        else:
+                            celda_banco = worksheet.cell(row=4, column=2, value=f"  {banco.replace('_', ' ')}  ")
+                            celda_banco.font = fuente_fallback
                         
                         col_inicio_resumen = max(ancho_tabla - 3, 6)
                         titulos_resumen = ["SALDO DISPONIBLE", "TOTAL CARGOS", "TOTAL ABONOS", "SALDO FINAL"]
@@ -513,7 +546,7 @@ if btn_convertir:
                             worksheet.column_dimensions[col[0].column_letter].width = min(max_len + 3, 50)
                     
                     st.download_button(
-                        label="📥 Descargar archivo Excel",
+                        label="📥 Descargar Excel Corporativo (con Logo)",
                         data=buffer.getvalue(),
                         file_name=f"Estado_Cuenta_{banco}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
