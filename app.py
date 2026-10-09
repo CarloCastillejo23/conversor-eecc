@@ -18,8 +18,13 @@ st.markdown("""
 <style>
 @import url('https://fonts.cdnfonts.com/css/bahnschrift');
 
-* {
-    font-family: 'Bahnschrift', 'Segoe UI', sans-serif !important;
+/* FUENTES CORREGIDAS: Evita romper los íconos de Streamlit (el error de 'upload' y 'visibility') */
+html, body, p, h1, h2, h3, h4, h5, h6, div, span, button, input, label, a {
+    font-family: 'Bahnschrift', 'Segoe UI', sans-serif;
+}
+/* Protegemos las fuentes de íconos nativas */
+.material-symbols-rounded, .material-icons, [class*="Icon"] {
+    font-family: 'Material Symbols Rounded', 'Material Icons', sans-serif !important;
 }
 
 #MainMenu, header, footer {
@@ -44,11 +49,14 @@ st.markdown("""
     padding: 0.8rem 0rem 1.5rem 0rem;
     border-bottom: 1px solid #EBF1F6;
     margin-bottom: 2rem;
+    flex-wrap: wrap;
+    gap: 1rem;
 }
 .nav-left {
     display: flex;
     align-items: center;
     gap: 1.2rem;
+    flex-wrap: wrap;
 }
 .nav-logo {
     height: 48px;
@@ -76,6 +84,8 @@ st.markdown("""
     justify-content: space-between;
     align-items: center;
     margin-bottom: 2rem;
+    flex-wrap: wrap;
+    gap: 2rem;
 }
 .hero-badge {
     color: #66CCA1;
@@ -108,7 +118,7 @@ st.markdown("""
 .bank-logo {
     height: 24px;
     object-fit: contain;
-    mix-blend-mode: multiply; /* Evita fondos blancos en JPGs/PNGs opacos */
+    mix-blend-mode: multiply;
 }
 .doc-icon {
     width: 48px;
@@ -133,6 +143,8 @@ st.markdown("""
     align-items: center;
     margin-bottom: 2rem;
     padding: 0 1rem;
+    flex-wrap: wrap;
+    gap: 1rem;
 }
 .step-item {
     display: flex;
@@ -172,6 +184,7 @@ st.markdown("""
     height: 1px;
     background-color: #E2EAF1;
     margin: 0 1rem;
+    min-width: 50px;
 }
 
 /* DROPZONE STYLING */
@@ -232,12 +245,14 @@ st.markdown("""
     border-radius: 14px;
     padding: 1.4rem 2.2rem;
     margin-bottom: 3.5rem;
+    flex-wrap: wrap;
 }
 .feature-item {
     display: flex;
     align-items: center;
     gap: 0.9rem;
     flex: 1;
+    min-width: 200px;
 }
 .feature-icon-box {
     width: 44px;
@@ -258,7 +273,7 @@ st.markdown("""
     line-height: 1.25;
 }
 
-/* FOOTER */
+/* FOOTER CORREGIDO: Flex-wrap y No-wrap para enlaces */
 .footer-container {
     background: #181145;
     padding: 2.2rem 2rem;
@@ -266,6 +281,8 @@ st.markdown("""
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap; /* Permite que los elementos se acomoden en pantallas chicas */
+    gap: 1.5rem;
     color: #A6B4C9;
     font-size: 0.9rem;
     margin-top: 2rem;
@@ -273,7 +290,8 @@ st.markdown("""
 .footer-left {
     display: flex;
     align-items: center;
-    gap: 1.8rem;
+    flex-wrap: wrap;
+    gap: 1.5rem;
 }
 .footer-logo {
     height: 38px;
@@ -281,17 +299,30 @@ st.markdown("""
 }
 .footer-copy {
     border-left: 1px solid rgba(255,255,255,0.2);
-    padding-left: 1.8rem;
+    padding-left: 1.5rem;
     color: #CAD5E2;
+}
+.footer-links {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
 }
 .footer-links a {
     color: #CAD5E2;
     text-decoration: none;
-    margin-left: 1.8rem;
+    white-space: nowrap; /* Evita que "Términos y condiciones" se rompa en dos líneas */
     transition: color 0.2s ease;
 }
 .footer-links a:hover {
     color: #66CCA1;
+}
+
+/* Ajustes responsivos para pantallas muy chicas */
+@media (max-width: 768px) {
+    .footer-copy {
+        border-left: none;
+        padding-left: 0;
+    }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -309,7 +340,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# --- SECCIÓN HERO (ACTUALIZADA CON NUEVOS LOGOS) ---
+# --- SECCIÓN HERO ---
 st.markdown("""
 <div class="hero-container">
     <div>
@@ -325,7 +356,7 @@ st.markdown("""
         </div>
     </div>
     <div>
-        <div style="background: #FFFFFF; padding: 1.8rem 2.4rem; border-radius: 20px; box-shadow: 0 18px 40px rgba(46,30,126,0.08); display: flex; align-items: center; gap: 1.5rem;">
+        <div style="background: #FFFFFF; padding: 1.8rem 2.4rem; border-radius: 20px; box-shadow: 0 18px 40px rgba(46,30,126,0.08); display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap; justify-content: center;">
             <div style="background: #FFF1F0; padding: 1.2rem; border-radius: 16px; border: 1px solid #FFCCC7; display: flex; align-items: center; justify-content: center;">
                 <img src="https://i.postimg.cc/ZKTn1Xyq/PDF-file-icon-svg.webp" class="doc-icon" alt="PDF">
             </div>
