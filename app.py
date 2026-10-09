@@ -307,7 +307,8 @@ if btn_convertir:
                     combined = " ".join([str(i[1]) for i in items])
                     pagina = key[0]
                     
-                    fecha, desc, medio, lugar, sucursal, num_op, hora, cargo, abono, itf, saldo = [""]*11
+                    # AÑADIDA LA VARIABLE ORIGEN
+                    fecha, desc, medio, lugar, sucursal, num_op, hora, origen, cargo, abono, itf, saldo = [""]*12
                     es_transaccion = False
 
                     if banco == "BANBIF":
@@ -419,13 +420,16 @@ if btn_convertir:
                                     elif re.match(r'^\d{2}:\d{2}$', t): hora = t 
                                     elif re.match(r'^\d{6}$', t): num_op = t 
                                     elif re.match(r'^\d{4}$', t): sucursal = t 
-                                    elif len(t) == 6 and t.isalnum(): hora += f" {t}"
+                                    # SEPARACIÓN EXACTA DE CÓDIGO DE ORIGEN
+                                    elif len(t) == 6 and t.isalnum() and not re.match(r'^\d{6}$', t): origen = t 
                                 es_transaccion = True
 
                     if es_transaccion:
-                        data_final.append([pagina, fecha, desc, medio, lugar, sucursal, num_op, hora.strip(), cargo, abono, itf, saldo])
+                        # SE AÑADE ORIGEN A LA LISTA
+                        data_final.append([pagina, fecha, desc, medio, lugar, sucursal, num_op, hora.strip(), origen.strip(), cargo, abono, itf, saldo])
                         
-                columnas = ["PAGINA", "FECHA", "DESCRIPCION", "MEDIO", "LUGAR", "SUCURSAL", "NUMERO DE OPERACION", "HORA U ORIGEN", "CARGO", "ABONO", "ITF", "SALDO"]
+                # SE ACTUALIZAN LAS COLUMNAS CON "ORIGEN"
+                columnas = ["PAGINA", "FECHA", "DESCRIPCION", "MEDIO", "LUGAR", "SUCURSAL", "NUMERO DE OPERACION", "HORA", "ORIGEN", "CARGO", "ABONO", "ITF", "SALDO"]
                 
                 def formatear_fecha(fecha_str):
                     fecha_str = str(fecha_str).strip().upper()
@@ -457,10 +461,10 @@ if btn_convertir:
                     df_final['FECHA'] = df_final['FECHA'].apply(formatear_fecha)
                     
                     if saldo_inicial_declarado is None:
-                        s_primero = parse_float_seguro(data_final[0][11])
-                        c_primero = parse_float_seguro(data_final[0][8])
-                        a_primero = parse_float_seguro(data_final[0][9])
-                        i_primero = parse_float_seguro(data_final[0][10])
+                        s_primero = parse_float_seguro(data_final[0][12]) # Columna M
+                        c_primero = parse_float_seguro(data_final[0][9])  # Columna J
+                        a_primero = parse_float_seguro(data_final[0][10]) # Columna K
+                        i_primero = parse_float_seguro(data_final[0][11]) # Columna L
                         saldo_inicial = s_primero + c_primero + i_primero - a_primero
                     else:
                         saldo_inicial = saldo_inicial_declarado
@@ -470,7 +474,8 @@ if btn_convertir:
                     df_final['ITF'] = df_final['ITF'].apply(limpiar_numero_espacios)
                     df_final['SALDO'] = None 
                     
-                    fila_saldo_anterior = pd.DataFrame([["", "", "SALDO ANTERIOR", "", "", "", "", "", None, None, None, None]], columns=columnas)
+                    # FILA DE SALDO ANTERIOR ACTUALIZADA PARA 13 COLUMNAS
+                    fila_saldo_anterior = pd.DataFrame([["", "", "SALDO ANTERIOR", "", "", "", "", "", "", None, None, None, None]], columns=columnas)
                     df_final = pd.concat([fila_saldo_anterior, df_final], ignore_index=True)
 
                     st.success(f"✅ ¡Conversión completada! Se procesaron {len(df_final) - 1} transacciones.")
@@ -481,8 +486,8 @@ if btn_convertir:
                         df_final.to_excel(writer, index=False, startrow=8, sheet_name="Estado de Cuenta")
                         worksheet = writer.sheets["Estado de Cuenta"]
                         
-                        # --- DISEÑO BLANCO Y NEGRO (FONDO DE LA CABECERA ES BLANCO) ---
-                        worksheet.sheet_view.showGridLines = False
+                        # --- DISEÑO BLANCO Y NEGRO DE ALTA ESTÉTICA ---
+                        worksheet.sheet_view.showGridLines = False # Apaga la cuadrícula gris de Excel
                         color_blanco = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
                         
                         fuente_negra_bold = Font(name="Bahnschrift", color="000000", bold=True)
@@ -495,25 +500,24 @@ if btn_convertir:
                         )
                         centro = Alignment(horizontal="center", vertical="center")
                         
-                        ancho_tabla = len(df_final.columns)
+                        ancho_tabla = len(df_final.columns) # Ahora es 13
                         last_row = 9 + len(df_final)
 
-                        # PINTAR LAS 8 PRIMERAS FILAS DE BLANCO SÓLIDO
+                        # PINTA LAS PRIMERAS 8 FILAS DE BLANCO SÓLIDO
                         for row in range(1, 9):
                             for col in range(1, ancho_tabla + 1):
                                 worksheet.cell(row=row, column=col).fill = color_blanco
 
-                        # APLICAR BORDES Y NEGRITAS A LA TABLA INFERIOR (Desde fila 9)
+                        # APLICA BORDES Y ESTILOS A LA TABLA (Desde fila 9)
                         for row in range(9, last_row + 1):
                             for col in range(1, ancho_tabla + 1):
                                 cell = worksheet.cell(row=row, column=col)
                                 cell.border = borde_negro
-                                if row == 9 or row == 10:
+                                if row == 9 or row == 10: # Fila 9: Títulos | Fila 10: Saldo Anterior
                                     cell.font = fuente_negra_bold
                                 else:
                                     cell.font = fuente_normal
                                 
-                        # INYECTAR LOGO DEL BANCO
                         logo_url = logos_bancos_urls.get(banco)
                         if logo_url:
                             try:
@@ -535,11 +539,10 @@ if btn_convertir:
                         else:
                             worksheet.cell(row=4, column=2, value=f"  {banco.replace('_', ' ')}  ").font = fuente_logo_fallback
                         
-                        # INYECTAR SUBTÍTULO DINÁMICO
+                        # INYECTA EL SUBTÍTULO DINÁMICO DEBAJO DEL LOGO
                         worksheet.cell(row=7, column=2, value=titulo_excel).font = fuente_titulo
                         
-                        # CUADRO DE RESUMEN
-                        col_inicio_resumen = max(ancho_tabla - 3, 6)
+                        col_inicio_resumen = max(ancho_tabla - 3, 6) # Caerá en la columna 10 (J)
                         titulos_resumen = ["SALDO DISPONIBLE", "TOTAL CARGOS", "TOTAL ABONOS", "SALDO FINAL"]
                         
                         for i in range(4):
@@ -550,19 +553,20 @@ if btn_convertir:
                             c_val.font, c_val.border, c_val.alignment = fuente_negra_bold, borde_negro, centro
                             c_val.number_format = '#,##0.00'
                         
-                        worksheet.cell(row=4, column=9).value = saldo_inicial 
-                        worksheet.cell(row=4, column=10).value = f"=SUM(I11:I{last_row}) + SUM(K11:K{last_row})" 
-                        worksheet.cell(row=4, column=11).value = f"=SUM(J11:J{last_row})" 
-                        worksheet.cell(row=4, column=12).value = "=I4+K4-J4" 
+                        # FÓRMULAS AJUSTADAS A LAS NUEVAS COLUMNAS (J: Cargo, K: Abono, L: ITF, M: Saldo)
+                        worksheet.cell(row=4, column=10).value = saldo_inicial 
+                        worksheet.cell(row=4, column=11).value = f"=SUM(J11:J{last_row}) + SUM(L11:L{last_row})" 
+                        worksheet.cell(row=4, column=12).value = f"=SUM(K11:K{last_row})" 
+                        worksheet.cell(row=4, column=13).value = "=J4+L4-K4" 
                         
                         for r in range(10, last_row + 1):
                             if r == 10:
-                                worksheet.cell(row=r, column=12).value = "=I4" 
+                                worksheet.cell(row=r, column=13).value = "=J4" 
                             else:
-                                worksheet.cell(row=r, column=12).value = f"=L{r-1}-I{r}+J{r}-K{r}"
+                                worksheet.cell(row=r, column=13).value = f"=M{r-1}-J{r}+K{r}-L{r}"
                         
                         for r in range(10, last_row + 1):
-                            for c in [9, 10, 11, 12]:
+                            for c in [10, 11, 12, 13]:
                                 worksheet.cell(row=r, column=c).number_format = '#,##0.00'
                             
                         for col in worksheet.columns:
@@ -570,7 +574,7 @@ if btn_convertir:
                             worksheet.column_dimensions[col[0].column_letter].width = min(max_len + 3, 50)
                     
                     st.download_button(
-                        label="📥 Descargar Excel Uniformizado (Formato y Fórmulas)",
+                        label="📥 Descargar Excel Corporativo (Diseño Final)",
                         data=buffer.getvalue(),
                         file_name=f"Estado_Cuenta_{banco}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
