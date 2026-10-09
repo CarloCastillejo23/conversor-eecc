@@ -105,10 +105,15 @@ st.markdown("""
     gap: 1.8rem;
     flex-wrap: wrap;
 }
-.bank-tag {
-    font-weight: 800;
-    font-size: 1.15rem;
-    letter-spacing: -0.02em;
+.bank-logo {
+    height: 24px;
+    object-fit: contain;
+    mix-blend-mode: multiply; /* Quita el fondo blanco de los JPGs */
+}
+.doc-icon {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
 }
 
 /* TARJETA PRINCIPAL */
@@ -304,7 +309,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# --- SECCIÓN HERO ---
+# --- SECCIÓN HERO (ACTUALIZADA CON LOGOS) ---
 st.markdown("""
 <div class="hero-container">
     <div>
@@ -312,18 +317,22 @@ st.markdown("""
         <div class="hero-title">Convertidor Universal<br>de Estados de Cuenta</div>
         <div class="hero-subtitle">Convierte tus estados de cuenta en Excel de forma rápida, segura y sin complicaciones.</div>
         <div class="banks-bar">
-            <span class="bank-tag" style="color: #FF5E00;">&gt;BCP&gt;</span>
-            <span class="bank-tag" style="color: #004481;">BBVA</span>
-            <span class="bank-tag" style="color: #009944;">■ Interbank</span>
-            <span class="bank-tag" style="color: #ED1C24;">Scotiabank</span>
-            <span class="bank-tag" style="color: #0072CE;">BanBif</span>
+            <img src="https://i.postimg.cc/rsGdSkRT/bcp-logo.png" class="bank-logo" alt="BCP">
+            <img src="https://i.postimg.cc/WzcFF33n/BBVA-2025.png" class="bank-logo" alt="BBVA">
+            <img src="https://i.postimg.cc/6qV7dX4t/Interbank-logo-svg.webp" class="bank-logo" alt="Interbank">
+            <img src="https://i.postimg.cc/L5FYYXXt/scotiabank-logo-icon-168845.webp" class="bank-logo" alt="Scotiabank">
+            <img src="https://i.postimg.cc/NfgFWZrB/Banbif-logo.jpg" class="bank-logo" alt="BanBif">
         </div>
     </div>
     <div>
-        <div style="background: #FFFFFF; padding: 1.6rem 2.2rem; border-radius: 20px; box-shadow: 0 18px 40px rgba(46,30,126,0.08); display: flex; align-items: center; gap: 1.4rem;">
-            <div style="background: #FFF1F0; padding: 0.9rem 1.1rem; border-radius: 12px; font-size: 2.2rem; border: 1px solid #FFCCC7;">📄</div>
-            <div style="color: #2E1E7E; font-size: 1.8rem; font-weight: bold;">➔</div>
-            <div style="background: #E6F7ED; padding: 0.9rem 1.1rem; border-radius: 12px; font-size: 2.2rem; border: 1px solid #B7EB8F;">📊</div>
+        <div style="background: #FFFFFF; padding: 1.8rem 2.4rem; border-radius: 20px; box-shadow: 0 18px 40px rgba(46,30,126,0.08); display: flex; align-items: center; gap: 1.5rem;">
+            <div style="background: #FFF1F0; padding: 1.2rem; border-radius: 16px; border: 1px solid #FFCCC7; display: flex; align-items: center; justify-content: center;">
+                <img src="https://i.postimg.cc/ZKTn1Xyq/PDF-file-icon-svg.webp" class="doc-icon" alt="PDF">
+            </div>
+            <div style="color: #2E1E7E; font-size: 2rem; font-weight: bold;">➔</div>
+            <div style="background: #E6F7ED; padding: 1.2rem; border-radius: 16px; border: 1px solid #B7EB8F; display: flex; align-items: center; justify-content: center;">
+                <img src="https://i.postimg.cc/QCZ99tt0/Microsoft-Office-Excel-(2019-2025)-svg.webp" class="doc-icon" alt="Excel">
+            </div>
         </div>
     </div>
 </div>
@@ -608,7 +617,6 @@ if btn_convertir:
                     st.success(f"✅ ¡Conversión completada! Se procesaron {len(df_final) - 1} transacciones.")
                     st.dataframe(df_final.head(10))
                     
-                    # Generación de Excel con formato corporativo Respaldo Tributario
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                         df_final.to_excel(writer, index=False, startrow=8, sheet_name="Estado de Cuenta")
