@@ -167,7 +167,7 @@ archivo_pdf = st.file_uploader("Arrastra tu estado de cuenta aquí o haz clic pa
 password_pdf = st.text_input("🔒 Contraseña (opcional)", type="password", placeholder="Ingresa la contraseña si tu archivo la requiere")
 btn_convertir = st.button("⚙️ Convertir a Excel")
 
-# --- URLs DE LOS LOGOS DE LOS BANCOS ---
+# --- URLs DE LOS LOGOS ---
 logos_bancos_urls = {
     "BCP_CORRIENTE": "https://i.postimg.cc/rsGdSkRT/bcp-logo.png",
     "BCP_AHORROS": "https://i.postimg.cc/rsGdSkRT/bcp-logo.png",
@@ -177,13 +177,12 @@ logos_bancos_urls = {
     "BANBIF": "https://i.postimg.cc/bvQsXPLd/banbif-logo-png-seeklogo-502109.png"
 }
 
-# --- MOTOR DE EXTRACCIÓN Y CONVERSIÓN ---
 if btn_convertir:
     if archivo_pdf is None:
         st.warning("⚠️ Primero debes seleccionar o arrastrar un archivo PDF.")
     else:
         if not HAS_PIKEPDF:
-            st.error("🚨 FALTA INSTALAR LA LLAVE MAESTRA (pikepdf) 🚨\n\nPor favor, ve a tu GitHub, abre el archivo `requirements.txt` y agrega la palabra `pikepdf` en una nueva línea. Luego, reinicia la aplicación haciendo clic en 'Manage App' -> 'Reboot app'.")
+            st.error("🚨 FALTA INSTALAR LA LLAVE MAESTRA (pikepdf) 🚨\n\nVe a tu GitHub, abre `requirements.txt`, agrega `pikepdf`, guarda y reinicia la app ('Manage App' -> 'Reboot app').")
             st.stop()
             
         with st.spinner("Desencriptando y aplicando auditoría contable..."):
@@ -270,6 +269,48 @@ if btn_convertir:
                     
                 titulo_excel = f"{tipo_cuenta} {moneda}"
                 
+                # --- EXTRACCIÓN INTELIGENTE DEL NOMBRE DEL CLIENTE (Múltiples Bancos) ---
+                nombre_cliente = ""
+                page_1_keys = [k for k in sorted_keys if k[0] == 1]
+                primeras_lineas = []
+                
+                for k in page_1_keys[:30]:
+                    items = sorted(lines_by_page_and_y[k], key=lambda i: i[0])
+                    combined = " ".join([str(i[1]) for i in items])
+                    primeras_lineas.append(combined.upper())
+
+                markers_directos = ["CLIENTE:", "CLIENTE", "TITULARES:", "TITULAR:", "TITULARES", "TITULAR", "NOMBRE Y DIRECCIÓN", "NOMBRE Y DIRECCION", "SEÑOR(ES):", "SEÑORES:", "SEÑOR(ES)", "SEÑORES"]
+                
+                for i, linea in enumerate(primeras_lineas):
+                    found = False
+                    for marker in markers_directos:
+                        if marker in linea:
+                            parts = linea.split(marker)
+                            if len(parts) > 1 and len(parts[1].strip()) > 3:
+                                nombre_cliente = parts[1].strip()
+                            elif i + 1 < len(primeras_lineas):
+                                nombre_cliente = primeras_lineas[i+1].strip()
+                            found = True
+                            break
+                    if found:
+                        break
+                        
+                if not nombre_cliente:
+                    for i, linea in enumerate(primeras_lineas):
+                        if "RUC." in linea or "RUC :" in linea or "RUC:" in linea:
+                            if i + 1 < len(primeras_lineas):
+                                nombre_cliente = primeras_lineas[i+1].strip()
+                                break
+                                
+                if not nombre_cliente:
+                    for linea in primeras_lineas:
+                        if re.search(r'\b(S\.A\.C\.|SAC|E\.I\.R\.L\.|EIRL|S\.R\.L\.|SRL|S\.A\.|SA)\b', linea):
+                            nombre_cliente = linea.strip()
+                            break
+
+                if nombre_cliente.startswith(":"):
+                    nombre_cliente = nombre_cliente[1:].strip()
+
                 match_year = re.search(r'\b(202\d)\b', texto_completo)
                 doc_year = match_year.group(1) if match_year else str(datetime.datetime.now().year)
                 
@@ -307,7 +348,6 @@ if btn_convertir:
                     combined = " ".join([str(i[1]) for i in items])
                     pagina = key[0]
                     
-                    # AÑADIDA LA VARIABLE ORIGEN
                     fecha, desc, medio, lugar, sucursal, num_op, hora, origen, cargo, abono, itf, saldo = [""]*12
                     es_transaccion = False
 
@@ -420,15 +460,12 @@ if btn_convertir:
                                     elif re.match(r'^\d{2}:\d{2}$', t): hora = t 
                                     elif re.match(r'^\d{6}$', t): num_op = t 
                                     elif re.match(r'^\d{4}$', t): sucursal = t 
-                                    # SEPARACIÓN EXACTA DE CÓDIGO DE ORIGEN
                                     elif len(t) == 6 and t.isalnum() and not re.match(r'^\d{6}$', t): origen = t 
                                 es_transaccion = True
 
                     if es_transaccion:
-                        # SE AÑADE ORIGEN A LA LISTA
                         data_final.append([pagina, fecha, desc, medio, lugar, sucursal, num_op, hora.strip(), origen.strip(), cargo, abono, itf, saldo])
                         
-                # SE ACTUALIZAN LAS COLUMNAS CON "ORIGEN"
                 columnas = ["PAGINA", "FECHA", "DESCRIPCION", "MEDIO", "LUGAR", "SUCURSAL", "NUMERO DE OPERACION", "HORA", "ORIGEN", "CARGO", "ABONO", "ITF", "SALDO"]
                 
                 def formatear_fecha(fecha_str):
@@ -461,10 +498,10 @@ if btn_convertir:
                     df_final['FECHA'] = df_final['FECHA'].apply(formatear_fecha)
                     
                     if saldo_inicial_declarado is None:
-                        s_primero = parse_float_seguro(data_final[0][12]) # Columna M
-                        c_primero = parse_float_seguro(data_final[0][9])  # Columna J
-                        a_primero = parse_float_seguro(data_final[0][10]) # Columna K
-                        i_primero = parse_float_seguro(data_final[0][11]) # Columna L
+                        s_primero = parse_float_seguro(data_final[0][12])
+                        c_primero = parse_float_seguro(data_final[0][9])
+                        a_primero = parse_float_seguro(data_final[0][10])
+                        i_primero = parse_float_seguro(data_final[0][11])
                         saldo_inicial = s_primero + c_primero + i_primero - a_primero
                     else:
                         saldo_inicial = saldo_inicial_declarado
@@ -474,7 +511,6 @@ if btn_convertir:
                     df_final['ITF'] = df_final['ITF'].apply(limpiar_numero_espacios)
                     df_final['SALDO'] = None 
                     
-                    # FILA DE SALDO ANTERIOR ACTUALIZADA PARA 13 COLUMNAS
                     fila_saldo_anterior = pd.DataFrame([["", "", "SALDO ANTERIOR", "", "", "", "", "", "", None, None, None, None]], columns=columnas)
                     df_final = pd.concat([fila_saldo_anterior, df_final], ignore_index=True)
 
@@ -486,8 +522,7 @@ if btn_convertir:
                         df_final.to_excel(writer, index=False, startrow=8, sheet_name="Estado de Cuenta")
                         worksheet = writer.sheets["Estado de Cuenta"]
                         
-                        # --- DISEÑO BLANCO Y NEGRO DE ALTA ESTÉTICA ---
-                        worksheet.sheet_view.showGridLines = False # Apaga la cuadrícula gris de Excel
+                        worksheet.sheet_view.showGridLines = False
                         color_blanco = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
                         
                         fuente_negra_bold = Font(name="Bahnschrift", color="000000", bold=True)
@@ -500,20 +535,18 @@ if btn_convertir:
                         )
                         centro = Alignment(horizontal="center", vertical="center")
                         
-                        ancho_tabla = len(df_final.columns) # Ahora es 13
+                        ancho_tabla = len(df_final.columns)
                         last_row = 9 + len(df_final)
 
-                        # PINTA LAS PRIMERAS 8 FILAS DE BLANCO SÓLIDO
                         for row in range(1, 9):
                             for col in range(1, ancho_tabla + 1):
                                 worksheet.cell(row=row, column=col).fill = color_blanco
 
-                        # APLICA BORDES Y ESTILOS A LA TABLA (Desde fila 9)
                         for row in range(9, last_row + 1):
                             for col in range(1, ancho_tabla + 1):
                                 cell = worksheet.cell(row=row, column=col)
                                 cell.border = borde_negro
-                                if row == 9 or row == 10: # Fila 9: Títulos | Fila 10: Saldo Anterior
+                                if row == 9 or row == 10:
                                     cell.font = fuente_negra_bold
                                 else:
                                     cell.font = fuente_normal
@@ -539,10 +572,12 @@ if btn_convertir:
                         else:
                             worksheet.cell(row=4, column=2, value=f"  {banco.replace('_', ' ')}  ").font = fuente_logo_fallback
                         
-                        # INYECTA EL SUBTÍTULO DINÁMICO DEBAJO DEL LOGO
                         worksheet.cell(row=7, column=2, value=titulo_excel).font = fuente_titulo
                         
-                        col_inicio_resumen = max(ancho_tabla - 3, 6) # Caerá en la columna 10 (J)
+                        if nombre_cliente:
+                            worksheet.cell(row=7, column=5, value=nombre_cliente).font = fuente_titulo
+                        
+                        col_inicio_resumen = max(ancho_tabla - 3, 6)
                         titulos_resumen = ["SALDO DISPONIBLE", "TOTAL CARGOS", "TOTAL ABONOS", "SALDO FINAL"]
                         
                         for i in range(4):
@@ -553,7 +588,6 @@ if btn_convertir:
                             c_val.font, c_val.border, c_val.alignment = fuente_negra_bold, borde_negro, centro
                             c_val.number_format = '#,##0.00'
                         
-                        # FÓRMULAS AJUSTADAS A LAS NUEVAS COLUMNAS (J: Cargo, K: Abono, L: ITF, M: Saldo)
                         worksheet.cell(row=4, column=10).value = saldo_inicial 
                         worksheet.cell(row=4, column=11).value = f"=SUM(J11:J{last_row}) + SUM(L11:L{last_row})" 
                         worksheet.cell(row=4, column=12).value = f"=SUM(K11:K{last_row})" 
