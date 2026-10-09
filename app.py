@@ -7,6 +7,13 @@ import datetime
 import traceback
 from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
 
+# --- VERIFICADOR DE LLAVE MAESTRA ---
+try:
+    import pikepdf
+    HAS_PIKEPDF = True
+except ImportError:
+    HAS_PIKEPDF = False
+
 st.set_page_config(
     page_title="Convertidor Universal de Estados de Cuenta | Respaldo Tributario",
     page_icon="📈",
@@ -42,7 +49,7 @@ html, body, p, h1, h2, h3, h4, h5, h6, div, span, button, input, label, a {
 .hero-title { color: #2E1E7E; font-size: 2.7rem; font-weight: 800; line-height: 1.15; margin-bottom: 0.8rem; }
 .hero-subtitle { color: #556575; font-size: 1.15rem; max-width: 540px; line-height: 1.45; margin-bottom: 1.5rem; }
 .banks-bar { display: flex; align-items: center; gap: 1.8rem; flex-wrap: wrap; }
-.bank-logo { height: 24px; object-fit: contain; }
+.bank-logo { height: 24px; object-fit: contain; mix-blend-mode: multiply; }
 .doc-icon { width: 48px; height: 48px; object-fit: contain; }
 
 /* TARJETA PRINCIPAL */
@@ -67,9 +74,6 @@ html, body, p, h1, h2, h3, h4, h5, h6, div, span, button, input, label, a {
 .stButton>button:hover { background: #231666 !important; box-shadow: 0 6px 18px rgba(46, 30, 126, 0.35) !important; transform: translateY(-1px); }
 .stDownloadButton>button { background: #66CCA1 !important; color: #2E1E7E !important; font-size: 1.1rem !important; font-weight: 800 !important; border-radius: 10px !important; border: none !important; box-shadow: 0 4px 14px rgba(102, 204, 161, 0.35) !important; width: 100% !important; }
 .stDownloadButton>button:hover { background: #55b78f !important; color: #1A104E !important; }
-
-/* ERRORES */
-.stAlert { white-space: pre-wrap !important; word-wrap: break-word !important; }
 
 /* TARJETAS INFERIORES DE CARACTERÍSTICAS */
 .features-container { display: flex; justify-content: space-between; gap: 1.5rem; background: #F1F8F8; border: 1px solid #E1EEEE; border-radius: 14px; padding: 1.4rem 2.2rem; margin-bottom: 3.5rem; flex-wrap: wrap; }
@@ -131,7 +135,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# --- TARJETA PRINCIPAL DE CARGA ---
+# --- TARJETA PRINCIPAL ---
 st.markdown("""
 <div class="main-card">
     <div class="steps-container">
@@ -157,44 +161,50 @@ archivo_pdf = st.file_uploader("Arrastra tu estado de cuenta aquí o haz clic pa
 password_pdf = st.text_input("🔒 Contraseña (opcional)", type="password", placeholder="Ingresa la contraseña si tu archivo la requiere")
 btn_convertir = st.button("⚙️ Convertir a Excel")
 
-# --- MOTOR DE EXTRACCIÓN Y CONVERSIÓN ---
+# --- MOTOR DE EXTRACCIÓN (CON PIKEPDF INTEGRADO) ---
 if btn_convertir:
     if archivo_pdf is None:
         st.warning("⚠️ Primero debes seleccionar o arrastrar un archivo PDF.")
     else:
-        with st.spinner("Procesando y aplicando auditoría contable..."):
+        # Validación de Seguridad
+        if not HAS_PIKEPDF:
+            st.error("🚨 FALTA INSTALAR LA LLAVE MAESTRA (pikepdf) 🚨\n\nPor favor, ve a tu GitHub, abre el archivo `requirements.txt` y agrega la palabra `pikepdf` en una nueva línea. Luego, reinicia la aplicación haciendo clic en 'Manage App' -> 'Reboot app'.")
+            st.stop()
+            
+        with st.spinner("Desencriptando y aplicando auditoría contable..."):
             try:
                 archivo_bytes = archivo_pdf.getvalue()
-                reader = pypdf.PdfReader(io.BytesIO(archivo_bytes))
                 
-                # --- NUEVA LÓGICA DE DESENCRIPTACIÓN (Mostrando errores reales) ---
-                if reader.is_encrypted:
+                # --- NUEVA DESENCRIPTACIÓN INFALIBLE CON PIKEPDF ---
+                try:
+                    # 1. Intentamos abrir el archivo tal cual (por si no tiene clave)
+                    pdf_document = pikepdf.Pdf.open(io.BytesIO(archivo_bytes))
+                    pdf_unlocked = io.BytesIO()
+                    pdf_document.save(pdf_unlocked)
+                    pdf_unlocked.seek(0)
+                    
+                except pikepdf.PasswordError:
+                    # 2. Si pikepdf rebota porque detecta un candado
                     if not password_pdf:
                         st.warning("🔒 Este documento tiene contraseña. Escríbela en la casilla de arriba.")
                         st.stop()
-                    
-                    clave_limpia = password_pdf.strip()
-                    
                     try:
-                        resultado = reader.decrypt(clave_limpia)
-                        if resultado == 0:
-                            st.error("❌ La contraseña ingresada es incorrecta según el documento PDF.")
-                            st.stop()
-                    except Exception as dec_err:
-                        error_details = traceback.format_exc()
-                        st.error(f"🔴 ERROR TÉCNICO AL ABRIR EL CANDADO:\n\n{error_details}")
-                        st.info("💡 Pásame una captura de este cuadro rojo. Así sabré exactamente por qué Streamlit está bloqueando tu archivo.")
-                        st.stop()
+                        # 3. Abrimos el candado con la contraseña
+                        clave_limpia = password_pdf.strip()
+                        pdf_document = pikepdf.Pdf.open(io.BytesIO(archivo_bytes), password=clave_limpia)
                         
-                    # Forzamos la lectura de páginas para verificar que el índice se reconstruyó bien
-                    try:
-                        _ = len(reader.pages)
-                    except Exception as page_err:
-                        error_details = traceback.format_exc()
-                        st.error(f"🔴 ERROR AL LEER LAS PÁGINAS DEL PDF:\n\n{error_details}")
-                        st.info("💡 Pásame una captura de este cuadro rojo. El banco ha dañado el índice de tu PDF al encriptarlo.")
+                        # 4. Guardamos un clon limpio y sin contraseña en la memoria temporal
+                        pdf_unlocked = io.BytesIO()
+                        pdf_document.save(pdf_unlocked)
+                        pdf_unlocked.seek(0)
+                    except pikepdf.PasswordError:
+                        st.error("❌ La contraseña ingresada es incorrecta.")
                         st.stop()
-
+                
+                # --- LECTURA SEGURA ---
+                # Le pasamos a pypdf el archivo temporal que ya fue "curado" y desbloqueado por pikepdf
+                reader = pypdf.PdfReader(pdf_unlocked)
+                
                 all_text_with_coords = []
                 texto_completo = ""
                 
