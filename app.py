@@ -7,7 +7,7 @@ import datetime
 import traceback
 import urllib.request
 from PIL import Image as PILImage
-from openpyxl.styles import PatternFill, Font, Border, Side, Alignment
+from openpyxl.styles import Font, Border, Side, Alignment
 from openpyxl.drawing.image import Image as OpenpyxlImage
 
 # --- VERIFICADOR DE LLAVE MAESTRA ---
@@ -258,6 +258,18 @@ if btn_convertir:
                     
                 st.info(f"🏦 Banco detectado automáticamente: **{banco.replace('_', ' ')}**")
                 
+                # --- IDENTIFICACIÓN DEL TIPO DE CUENTA Y MONEDA ---
+                tipo_cuenta = "ESTADO DE CUENTA"
+                if "CORRIENTE" in texto_upper: tipo_cuenta += " CORRIENTE"
+                elif "AHORRO" in texto_upper: tipo_cuenta += " DE AHORROS"
+                elif "NEGOCIOS" in texto_upper: tipo_cuenta += " NEGOCIOS"
+                
+                moneda = "SOLES"
+                if "DOLAR" in texto_upper or "DÓLAR" in texto_upper or "USD" in texto_upper or "US$" in texto_upper:
+                    moneda = "DOLARES"
+                    
+                titulo_excel = f"{tipo_cuenta} {moneda}"
+
                 match_year = re.search(r'\b(202\d)\b', texto_completo)
                 doc_year = match_year.group(1) if match_year else str(datetime.datetime.now().year)
                 
@@ -464,65 +476,56 @@ if btn_convertir:
                     st.success(f"✅ ¡Conversión completada! Se procesaron {len(df_final) - 1} transacciones.")
                     st.dataframe(df_final.head(10))
                     
-                    # --- CREACIÓN DEL EXCEL Y PEGADO DE LOGO ---
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                         df_final.to_excel(writer, index=False, startrow=8, sheet_name="Estado de Cuenta")
                         worksheet = writer.sheets["Estado de Cuenta"]
                         
-                        color_marca = PatternFill(start_color="2E1E7E", end_color="2E1E7E", fill_type="solid")
-                        fuente_blanca = Font(name="Bahnschrift", color="FFFFFF", bold=True)
-                        fuente_fallback = Font(name="Bahnschrift", color="FFFFFF", bold=True, size=36, italic=True)
-                        borde_blanco = Border(
-                            left=Side(style='medium', color="FFFFFF"), right=Side(style='medium', color="FFFFFF"),
-                            top=Side(style='medium', color="FFFFFF"), bottom=Side(style='medium', color="FFFFFF")
+                        # --- DISEÑO BLANCO Y NEGRO (EXCEPTO LOGO) ---
+                        fuente_negra_bold = Font(name="Bahnschrift", color="000000", bold=True)
+                        fuente_titulo = Font(name="Bahnschrift", color="000000", bold=True, size=12)
+                        fuente_logo_fallback = Font(name="Bahnschrift", color="000000", bold=True, size=36, italic=True)
+                        borde_negro = Border(
+                            left=Side(style='thin', color="000000"), right=Side(style='thin', color="000000"),
+                            top=Side(style='thin', color="000000"), bottom=Side(style='thin', color="000000")
                         )
                         centro = Alignment(horizontal="center", vertical="center")
                         
                         ancho_tabla = len(df_final.columns)
-                        for row in range(1, 8):
-                            for col in range(1, ancho_tabla + 1):
-                                worksheet.cell(row=row, column=col).fill = color_marca
                                 
-                        # Magia: Descargar e insertar el logo del banco
                         logo_url = logos_bancos_urls.get(banco)
                         if logo_url:
                             try:
                                 req = urllib.request.Request(logo_url, headers={'User-Agent': 'Mozilla/5.0'})
                                 with urllib.request.urlopen(req) as response:
                                     img_data = io.BytesIO(response.read())
-                                
-                                # Convertimos a PNG puro en memoria para asegurar que Excel lo lea
                                 pil_img = PILImage.open(img_data)
                                 png_io = io.BytesIO()
                                 pil_img.save(png_io, format="PNG")
                                 png_io.seek(0)
-                                
                                 img_excel = OpenpyxlImage(png_io)
-                                # Ajuste de tamaño corporativo para la cabecera
                                 target_height = 80
                                 aspect_ratio = pil_img.width / pil_img.height
                                 img_excel.height = target_height
                                 img_excel.width = int(target_height * aspect_ratio)
-                                
                                 worksheet.add_image(img_excel, 'B2')
                             except Exception as img_err:
-                                print(f"Logo no cargó: {img_err}")
-                                celda_banco = worksheet.cell(row=4, column=2, value=f"  {banco.replace('_', ' ')}  ")
-                                celda_banco.font = fuente_fallback
+                                worksheet.cell(row=4, column=2, value=f"  {banco.replace('_', ' ')}  ").font = fuente_logo_fallback
                         else:
-                            celda_banco = worksheet.cell(row=4, column=2, value=f"  {banco.replace('_', ' ')}  ")
-                            celda_banco.font = fuente_fallback
+                            worksheet.cell(row=4, column=2, value=f"  {banco.replace('_', ' ')}  ").font = fuente_logo_fallback
+                        
+                        # Inyectar Subtítulo Dinámico (Tipo de cuenta y Moneda)
+                        worksheet.cell(row=7, column=2, value=titulo_excel).font = fuente_titulo
                         
                         col_inicio_resumen = max(ancho_tabla - 3, 6)
                         titulos_resumen = ["SALDO DISPONIBLE", "TOTAL CARGOS", "TOTAL ABONOS", "SALDO FINAL"]
                         
                         for i in range(4):
                             c_tit = worksheet.cell(row=3, column=col_inicio_resumen + i, value=titulos_resumen[i])
-                            c_tit.font, c_tit.fill, c_tit.border, c_tit.alignment = fuente_blanca, color_marca, borde_blanco, centro
+                            c_tit.font, c_tit.border, c_tit.alignment = fuente_negra_bold, borde_negro, centro
                             
                             c_val = worksheet.cell(row=4, column=col_inicio_resumen + i)
-                            c_val.font, c_val.fill, c_val.border, c_val.alignment = fuente_blanca, color_marca, borde_blanco, centro
+                            c_val.font, c_val.border, c_val.alignment = fuente_negra_bold, borde_negro, centro
                             c_val.number_format = '#,##0.00'
                         
                         last_row = 9 + len(df_final)
@@ -546,7 +549,7 @@ if btn_convertir:
                             worksheet.column_dimensions[col[0].column_letter].width = min(max_len + 3, 50)
                     
                     st.download_button(
-                        label="📥 Descargar Excel Corporativo (con Logo)",
+                        label="📥 Descargar archivo Excel",
                         data=buffer.getvalue(),
                         file_name=f"Estado_Cuenta_{banco}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -555,7 +558,7 @@ if btn_convertir:
                     st.warning("⚠️ No se identificaron transacciones procesables en el archivo.")
             except Exception as e:
                 error_details = traceback.format_exc()
-                st.error(f"❌ Ocurrió un error general al procesar el archivo:\n\n{error_details}")
+                st.error(f"❌ Ocurrió un error al procesar el archivo:\n\n{error_details}")
 
 # --- SECCIÓN INFERIOR DE CARACTERÍSTICAS ---
 st.markdown("""
