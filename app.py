@@ -164,28 +164,38 @@ if btn_convertir:
     else:
         with st.spinner("Procesando y aplicando auditoría contable..."):
             try:
-                archivo_pdf.seek(0)
-                reader = pypdf.PdfReader(archivo_pdf)
+                # Guardamos el archivo en memoria temporal para poder abrirlo varias veces sin corromperlo
+                archivo_bytes = archivo_pdf.getvalue()
+                lector_prueba = pypdf.PdfReader(io.BytesIO(archivo_bytes))
                 
-                # --- SOLUCIÓN A LA ENCRIPTACIÓN BANCARIA (AES-256) ---
-                if reader.is_encrypted:
+                # --- SOLUCIÓN INFALIBLE DE ENCRIPTACIÓN ---
+                if lector_prueba.is_encrypted:
                     if not password_pdf:
                         st.warning("🔒 Este documento tiene contraseña. Escríbela en la casilla de arriba.")
                         st.stop()
                     else:
+                        clave_limpia = password_pdf.strip()
                         try:
-                            # 1. Quitamos espacios en blanco accidentales que el usuario pudo tipear
-                            clave_limpia = password_pdf.strip()
-                            
-                            # 2. Desencriptamos de manera segura
-                            resultado = reader.decrypt(clave_limpia)
-                            if resultado == 0:
-                                st.error("❌ La contraseña ingresada es incorrecta.")
+                            # PLAN A: Inyectar clave en el constructor (Cura el error NoneType en AES-256)
+                            reader = pypdf.PdfReader(io.BytesIO(archivo_bytes), password=clave_limpia)
+                            # Forzamos la lectura para asegurar que se desencriptó el mapa de páginas
+                            if len(reader.pages) == 0:
+                                raise ValueError("PDF vacío")
+                        except Exception as e_direct:
+                            try:
+                                # PLAN B: Desencriptación Legacy (Para PDFs antiguos)
+                                reader_alt = pypdf.PdfReader(io.BytesIO(archivo_bytes))
+                                if reader_alt.decrypt(clave_limpia) == 0:
+                                    st.error("❌ La contraseña ingresada es incorrecta.")
+                                    st.stop()
+                                # Verificamos que las páginas existan
+                                _ = len(reader_alt.pages)
+                                reader = reader_alt
+                            except Exception as e_legacy:
+                                st.error("🛡️ Seguridad Bancaria detectada: Para leer este PDF, asegúrate de haber añadido la palabra **cryptography** en tu archivo requirements.txt de GitHub.")
                                 st.stop()
-                                
-                        except Exception as dec_err:
-                            st.error("🛡️ Seguridad Bancaria detectada: Para leer este PDF encriptado, asegúrate de haber añadido la palabra **cryptography** en tu archivo requirements.txt de GitHub.")
-                            st.stop()
+                else:
+                    reader = lector_prueba
 
                 all_text_with_coords = []
                 texto_completo = ""
