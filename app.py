@@ -273,7 +273,7 @@ html, body, p, h1, h2, h3, h4, h5, h6, div, span, button, input, label, a {
     line-height: 1.25;
 }
 
-/* FOOTER CORREGIDO: Flex-wrap y No-wrap para enlaces */
+/* FOOTER CORREGIDO */
 .footer-container {
     background: #181145;
     padding: 2.2rem 2rem;
@@ -281,7 +281,7 @@ html, body, p, h1, h2, h3, h4, h5, h6, div, span, button, input, label, a {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    flex-wrap: wrap; /* Permite que los elementos se acomoden en pantallas chicas */
+    flex-wrap: wrap;
     gap: 1.5rem;
     color: #A6B4C9;
     font-size: 0.9rem;
@@ -310,14 +310,13 @@ html, body, p, h1, h2, h3, h4, h5, h6, div, span, button, input, label, a {
 .footer-links a {
     color: #CAD5E2;
     text-decoration: none;
-    white-space: nowrap; /* Evita que "Términos y condiciones" se rompa en dos líneas */
+    white-space: nowrap;
     transition: color 0.2s ease;
 }
 .footer-links a:hover {
     color: #66CCA1;
 }
 
-/* Ajustes responsivos para pantallas muy chicas */
 @media (max-width: 768px) {
     .footer-copy {
         border-left: none;
@@ -419,9 +418,11 @@ if btn_convertir:
                 for page_num, page in enumerate(reader.pages):
                     texto_completo += page.extract_text() + " "
                     def visitor_extract(text, cm, tm, fontDict, fontSize):
-                        x, y = tm[4], tm[5]
-                        if text.strip():
-                            all_text_with_coords.append((page_num + 1, round(x, 1), round(y, 1), text.strip()))
+                        # BLINDAJE CONTRA TEXTOS FANTASMAS (Manejo del error NoneType)
+                        if tm is not None:
+                            x, y = tm[4], tm[5]
+                            if text.strip():
+                                all_text_with_coords.append((page_num + 1, round(x, 1), round(y, 1), text.strip()))
                     page.extract_text(visitor_text=visitor_extract)
                     
                 lines_by_page_and_y = {}
@@ -459,13 +460,11 @@ if btn_convertir:
                     combined = " ".join([i[1] for i in items])
                     
                     if banco == "SCOTIABANK" and "Saldo Final al" in combined and re.search(r'\d{4}', combined):
-                        try: 
-                            saldo_inicial_declarado = float(combined.split()[-1].replace(',', ''))
+                        try: saldo_inicial_declarado = float(combined.split()[-1].replace(',', ''))
                         except: pass
                         break
                     elif banco in ["BBVA", "BCP_AHORROS"] and "SALDO ANTERIOR" in combined:
-                        try: 
-                            saldo_inicial_declarado = float(combined.split()[-1].replace(',', ''))
+                        try: saldo_inicial_declarado = float(combined.split()[-1].replace(',', ''))
                         except: pass
                         break
                     elif banco == "INTERBANK":
@@ -477,8 +476,7 @@ if btn_convertir:
                             break
                     elif banco == "BCP_CORRIENTE":
                         if len(items) > 5 and not re.search(r'[a-zA-Z]', combined):
-                            try: 
-                                saldo_inicial_declarado = float(items[0][1].replace(',', ''))
+                            try: saldo_inicial_declarado = float(items[0][1].replace(',', ''))
                             except: pass
                             break
 
