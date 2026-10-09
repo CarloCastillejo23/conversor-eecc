@@ -42,7 +42,7 @@ html, body, p, h1, h2, h3, h4, h5, h6, div, span, button, input, label, a {
 .hero-title { color: #2E1E7E; font-size: 2.7rem; font-weight: 800; line-height: 1.15; margin-bottom: 0.8rem; }
 .hero-subtitle { color: #556575; font-size: 1.15rem; max-width: 540px; line-height: 1.45; margin-bottom: 1.5rem; }
 .banks-bar { display: flex; align-items: center; gap: 1.8rem; flex-wrap: wrap; }
-.bank-logo { height: 24px; object-fit: contain; mix-blend-mode: multiply; }
+.bank-logo { height: 24px; object-fit: contain; }
 .doc-icon { width: 48px; height: 48px; object-fit: contain; }
 
 /* TARJETA PRINCIPAL */
@@ -164,38 +164,36 @@ if btn_convertir:
     else:
         with st.spinner("Procesando y aplicando auditoría contable..."):
             try:
-                # Guardamos el archivo en memoria temporal para poder abrirlo varias veces sin corromperlo
                 archivo_bytes = archivo_pdf.getvalue()
-                lector_prueba = pypdf.PdfReader(io.BytesIO(archivo_bytes))
+                reader = pypdf.PdfReader(io.BytesIO(archivo_bytes))
                 
-                # --- SOLUCIÓN INFALIBLE DE ENCRIPTACIÓN ---
-                if lector_prueba.is_encrypted:
+                # --- NUEVA LÓGICA DE DESENCRIPTACIÓN (Mostrando errores reales) ---
+                if reader.is_encrypted:
                     if not password_pdf:
                         st.warning("🔒 Este documento tiene contraseña. Escríbela en la casilla de arriba.")
                         st.stop()
-                    else:
-                        clave_limpia = password_pdf.strip()
-                        try:
-                            # PLAN A: Inyectar clave en el constructor (Cura el error NoneType en AES-256)
-                            reader = pypdf.PdfReader(io.BytesIO(archivo_bytes), password=clave_limpia)
-                            # Forzamos la lectura para asegurar que se desencriptó el mapa de páginas
-                            if len(reader.pages) == 0:
-                                raise ValueError("PDF vacío")
-                        except Exception as e_direct:
-                            try:
-                                # PLAN B: Desencriptación Legacy (Para PDFs antiguos)
-                                reader_alt = pypdf.PdfReader(io.BytesIO(archivo_bytes))
-                                if reader_alt.decrypt(clave_limpia) == 0:
-                                    st.error("❌ La contraseña ingresada es incorrecta.")
-                                    st.stop()
-                                # Verificamos que las páginas existan
-                                _ = len(reader_alt.pages)
-                                reader = reader_alt
-                            except Exception as e_legacy:
-                                st.error("🛡️ Seguridad Bancaria detectada: Para leer este PDF, asegúrate de haber añadido la palabra **cryptography** en tu archivo requirements.txt de GitHub.")
-                                st.stop()
-                else:
-                    reader = lector_prueba
+                    
+                    clave_limpia = password_pdf.strip()
+                    
+                    try:
+                        resultado = reader.decrypt(clave_limpia)
+                        if resultado == 0:
+                            st.error("❌ La contraseña ingresada es incorrecta según el documento PDF.")
+                            st.stop()
+                    except Exception as dec_err:
+                        error_details = traceback.format_exc()
+                        st.error(f"🔴 ERROR TÉCNICO AL ABRIR EL CANDADO:\n\n{error_details}")
+                        st.info("💡 Pásame una captura de este cuadro rojo. Así sabré exactamente por qué Streamlit está bloqueando tu archivo.")
+                        st.stop()
+                        
+                    # Forzamos la lectura de páginas para verificar que el índice se reconstruyó bien
+                    try:
+                        _ = len(reader.pages)
+                    except Exception as page_err:
+                        error_details = traceback.format_exc()
+                        st.error(f"🔴 ERROR AL LEER LAS PÁGINAS DEL PDF:\n\n{error_details}")
+                        st.info("💡 Pásame una captura de este cuadro rojo. El banco ha dañado el índice de tu PDF al encriptarlo.")
+                        st.stop()
 
                 all_text_with_coords = []
                 texto_completo = ""
@@ -514,7 +512,7 @@ if btn_convertir:
                     st.warning("⚠️ No se identificaron transacciones procesables en el archivo.")
             except Exception as e:
                 error_details = traceback.format_exc()
-                st.error(f"❌ Ocurrió un error al procesar el archivo:\n\n{error_details}")
+                st.error(f"❌ Ocurrió un error general al procesar el archivo:\n\n{error_details}")
 
 # --- SECCIÓN INFERIOR DE CARACTERÍSTICAS ---
 st.markdown("""
