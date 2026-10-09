@@ -3,3 +3,4 @@ pypdf
 pandas
 openpyxl
 cryptography
+pikepdf
